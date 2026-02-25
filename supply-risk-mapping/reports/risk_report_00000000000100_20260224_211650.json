@@ -1,0 +1,135 @@
+{
+  "metadata": {
+    "versao": "1.0",
+    "data_geracao": "2026-02-24T21:16:50.719366",
+    "sistema": "Supply Risk Mapping — FIUS Innovation Hub"
+  },
+  "empresa": {
+    "cnpj": "00.000.000/0001-00",
+    "razao_social": "EMPRESA TESTE LTDA",
+    "nome_fantasia": "TESTE",
+    "situacao_cadastral": "ATIVA",
+    "data_abertura": "2020-01-15",
+    "empresa_recente": false,
+    "cnae_principal": "6201-5/00 - Desenvolvimento de programas de computador",
+    "uf": "SP",
+    "municipio": "São Paulo",
+    "capital_social": 100000,
+    "porte": "ME",
+    "natureza_juridica": "Sociedade Limitada",
+    "socios": [
+      {
+        "nome": "JOÃO SILVA",
+        "cpf_cnpj": "12345678901",
+        "cpf_cnpj_formatado": "***.456.789-**",
+        "tipo": "PF",
+        "qualificacao": "Sócio-Administrador",
+        "data_entrada": "2020-01-15"
+      },
+      {
+        "nome": "MARIA SOUZA",
+        "cpf_cnpj": "98765432100",
+        "cpf_cnpj_formatado": "***.654.321-**",
+        "tipo": "PF",
+        "qualificacao": "Sócio",
+        "data_entrada": "2020-01-15"
+      }
+    ],
+    "status": "ok"
+  },
+  "sancoes": {
+    "empresa": {
+      "ceis": {
+        "lista": "CEIS",
+        "encontrado": true,
+        "quantidade": 1,
+        "detalhes": [
+          {
+            "tipo_sancao": "Impedimento",
+            "orgao_sancionador": "CGU",
+            "data_inicio": "2024-01-01",
+            "data_fim": "2025-01-01"
+          }
+        ]
+      },
+      "cnep": {
+        "lista": "CNEP",
+        "encontrado": false,
+        "quantidade": 0,
+        "detalhes": []
+      },
+      "cepim": {
+        "lista": "CEPIM",
+        "encontrado": false,
+        "quantidade": 0,
+        "detalhes": []
+      }
+    },
+    "socios": []
+  },
+  "pep": [
+    {
+      "nome": "JOÃO SILVA",
+      "nivel_exposicao": "NENHUMA",
+      "flags": [],
+      "servidor_federal": {
+        "encontrado": false
+      }
+    },
+    {
+      "nome": "MARIA SOUZA",
+      "nivel_exposicao": "ALTA",
+      "flags": [
+        "SERVIDOR_PUBLICO_FEDERAL"
+      ],
+      "servidor_federal": {
+        "encontrado": true,
+        "vinculos": [
+          {
+            "orgao": "MF",
+            "cargo": "Auditor"
+          }
+        ]
+      }
+    }
+  ],
+  "risk_score": {
+    "score": 60,
+    "nivel": "ALTO",
+    "cor": "#FF6B35",
+    "total_flags": 2,
+    "flags": [
+      "CEIS_EMPRESA",
+      "SERVIDOR_PUBLICO:MARIA SOUZA"
+    ],
+    "detalhes": [
+      {
+        "flag": "CEIS_EMPRESA",
+        "peso": 35,
+        "descricao": "Empresa consta no CEIS com 1 sanção(ões)",
+        "severidade": "CRITICA",
+        "dados": [
+          {
+            "tipo_sancao": "Impedimento",
+            "orgao_sancionador": "CGU",
+            "data_inicio": "2024-01-01",
+            "data_fim": "2025-01-01"
+          }
+        ]
+      },
+      {
+        "flag": "SERVIDOR_PUBLICO",
+        "peso": 25,
+        "descricao": "Sócio 'MARIA SOUZA' é servidor público federal",
+        "severidade": "ALTA",
+        "dados": [
+          {
+            "orgao": "MF",
+            "cargo": "Auditor"
+          }
+        ]
+      }
+    ],
+    "resumo": "🔴 RISCO ALTO (60/100) — EMPRESA TESTE LTDA apresenta múltiplos indicadores de risco. 2 flag(s) identificados. RECOMENDAÇÃO: Due diligence aprofundada antes de prosseguir com contratação."
+  }
+}

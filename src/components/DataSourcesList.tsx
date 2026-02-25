@@ -29,6 +29,8 @@ export function DataSourcesList({ sources }: DataSourcesListProps) {
         {sources.map((source, i) => {
           const config = statusConfig[source.status];
           const Icon = config.icon;
+          const hasLatency = typeof source.latency_ms === "number" && source.latency_ms >= 0;
+          const hasEvidence = typeof source.evidence_count === "number";
           return (
             <div
               key={i}
@@ -39,6 +41,12 @@ export function DataSourcesList({ sources }: DataSourcesListProps) {
                 <span className="text-sm truncate">{source.name}</span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
+                {hasEvidence && (
+                  <span className="text-xs text-muted-foreground hidden lg:inline">evidências: {source.evidence_count}</span>
+                )}
+                {hasLatency && (
+                  <span className="text-xs text-muted-foreground hidden lg:inline">{source.latency_ms}ms</span>
+                )}
                 {source.message && (
                   <span className="text-xs text-muted-foreground hidden md:inline">{source.message}</span>
                 )}

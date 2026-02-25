@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Railway / deploy
+.railway_job_token
+
+# Supabase temp
+supabase/.temp/

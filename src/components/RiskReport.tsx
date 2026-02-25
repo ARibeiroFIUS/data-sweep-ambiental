@@ -55,6 +55,11 @@ export function RiskReport({ data, onBack }: RiskReportProps) {
           <p className="text-xs text-muted-foreground/50 mt-3">
             Análise realizada em {new Date(data.analyzed_at).toLocaleString("pt-BR")}
           </p>
+          {data.meta && (
+            <p className="text-xs text-muted-foreground/50 mt-1">
+              {data.meta.partial ? "Resultado parcial (uma ou mais fontes indisponíveis)." : "Resultado completo."}
+            </p>
+          )}
         </div>
       </div>
 

@@ -71,3 +71,9 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+## Backend / Railway
+
+Operational backend instructions (Postgres, PGFN sync job, cron e variáveis) estão em:
+
+- `RAILWAY_RUNBOOK.md`

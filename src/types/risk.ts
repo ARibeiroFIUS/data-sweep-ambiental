@@ -41,9 +41,13 @@ export interface RiskFlag {
 }
 
 export interface DataSource {
+  id?: string;
   name: string;
   status: "success" | "error" | "not_found" | "unavailable";
   message?: string;
+  status_reason?: string;
+  latency_ms?: number;
+  evidence_count?: number;
 }
 
 export interface RiskAnalysis {
@@ -54,4 +58,9 @@ export interface RiskAnalysis {
   sources: DataSource[];
   summary: string;
   analyzed_at: string;
+  meta?: {
+    sources_version: string;
+    partial: boolean;
+    snapshot_at: string | null;
+  };
 }
