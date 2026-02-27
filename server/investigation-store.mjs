@@ -31,6 +31,12 @@ function normalizeCnpj(value) {
     .slice(0, 14);
 }
 
+function normalizeCpf(value) {
+  return String(value ?? "")
+    .replace(/\D/g, "")
+    .slice(0, 11);
+}
+
 export function isInvestigationStoreEnabled() {
   return Boolean(DATABASE_URL);
 }
@@ -913,6 +919,117 @@ export async function listSearchQueries({ cnpj, limit = 20, offset = 0 } = {}) {
       normalizedCnpj.length === 14 ? [normalizedCnpj, cappedLimit, safeOffset] : [cappedLimit, safeOffset];
 
     const { rows } = await activePool.query(query, values);
+    return rows;
+  } catch (error) {
+    if (isMissingSchemaError(error)) return [];
+    throw error;
+  }
+}
+
+export async function createPartnerSearchQuery(input) {
+  const activePool = getPool();
+  if (!activePool) return null;
+
+  const normalizedCnpj = normalizeCnpj(input?.cnpj);
+  const normalizedCpf = normalizeCpf(input?.cpf);
+  const nome = String(input?.nome ?? "").trim();
+  if (normalizedCnpj.length !== 14 || normalizedCpf.length !== 11 || !nome) return null;
+
+  try {
+    const { rows } = await activePool.query(
+      `INSERT INTO partner_search_queries (
+         id, cnpj, cpf, nome, analyzed_at, result_json
+       ) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+       RETURNING id, cnpj, cpf, nome, requested_at, analyzed_at, result_json, created_at`,
+      [
+        input?.id,
+        normalizedCnpj,
+        normalizedCpf,
+        nome,
+        input?.analyzedAt ? new Date(input.analyzedAt) : null,
+        JSON.stringify(input?.result ?? {}),
+      ],
+    );
+    return rows[0] ?? null;
+  } catch (error) {
+    if (isMissingSchemaError(error)) return null;
+    throw error;
+  }
+}
+
+export async function getPartnerSearchQueryById(searchId) {
+  const activePool = getPool();
+  if (!activePool || !searchId) return null;
+
+  try {
+    const { rows } = await activePool.query(
+      `SELECT id, cnpj, cpf, nome, requested_at, analyzed_at, result_json, created_at
+         FROM partner_search_queries
+        WHERE id = $1
+        LIMIT 1`,
+      [searchId],
+    );
+    return rows[0] ?? null;
+  } catch (error) {
+    if (isMissingSchemaError(error)) return null;
+    throw error;
+  }
+}
+
+export async function listPartnerSearchQueries({ cnpj, cpf, limit = 20, offset = 0 } = {}) {
+  const activePool = getPool();
+  if (!activePool) return [];
+
+  const normalizedCnpj = normalizeCnpj(cnpj);
+  const normalizedCpf = normalizeCpf(cpf);
+  const cappedLimit = Math.max(1, Math.min(100, Number.parseInt(String(limit), 10) || 20));
+  const safeOffset = Math.max(0, Number.parseInt(String(offset), 10) || 0);
+
+  try {
+    if (normalizedCnpj.length === 14 && normalizedCpf.length === 11) {
+      const { rows } = await activePool.query(
+        `SELECT id, cnpj, cpf, nome, requested_at, analyzed_at, result_json, created_at
+           FROM partner_search_queries
+          WHERE cnpj = $1
+            AND cpf = $2
+          ORDER BY requested_at DESC
+          LIMIT $3 OFFSET $4`,
+        [normalizedCnpj, normalizedCpf, cappedLimit, safeOffset],
+      );
+      return rows;
+    }
+
+    if (normalizedCnpj.length === 14) {
+      const { rows } = await activePool.query(
+        `SELECT id, cnpj, cpf, nome, requested_at, analyzed_at, result_json, created_at
+           FROM partner_search_queries
+          WHERE cnpj = $1
+          ORDER BY requested_at DESC
+          LIMIT $2 OFFSET $3`,
+        [normalizedCnpj, cappedLimit, safeOffset],
+      );
+      return rows;
+    }
+
+    if (normalizedCpf.length === 11) {
+      const { rows } = await activePool.query(
+        `SELECT id, cnpj, cpf, nome, requested_at, analyzed_at, result_json, created_at
+           FROM partner_search_queries
+          WHERE cpf = $1
+          ORDER BY requested_at DESC
+          LIMIT $2 OFFSET $3`,
+        [normalizedCpf, cappedLimit, safeOffset],
+      );
+      return rows;
+    }
+
+    const { rows } = await activePool.query(
+      `SELECT id, cnpj, cpf, nome, requested_at, analyzed_at, result_json, created_at
+         FROM partner_search_queries
+        ORDER BY requested_at DESC
+        LIMIT $1 OFFSET $2`,
+      [cappedLimit, safeOffset],
+    );
     return rows;
   } catch (error) {
     if (isMissingSchemaError(error)) return [];

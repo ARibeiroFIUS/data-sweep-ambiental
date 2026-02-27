@@ -223,6 +223,66 @@ export interface RiskAnalysis {
   };
 }
 
+export interface PartnerReverseLookupProviderStatus {
+  source: string;
+  status: "success" | "not_found" | "unavailable" | "error";
+  reason: string;
+  count: number;
+  from_cache?: boolean;
+  source_last_modified?: string | null;
+}
+
+export interface PartnerRelatedCompany {
+  cnpj: string;
+  razao_social: string;
+  uf: string;
+  municipio: string;
+  situacao_cadastral: string;
+  providers: string[];
+}
+
+export interface PartnerRiskAnalysis {
+  person: {
+    nome: string;
+    cpf: string;
+    cpf_masked: string;
+    company_link_validation: {
+      status: "matched";
+      mode: "cpf_exact" | "name_and_mask" | "name_unique";
+    };
+  };
+  company_context: {
+    cnpj: string;
+    razao_social: string;
+    nome_fantasia: string;
+    situacao_cadastral: string;
+    uf: string;
+    municipio: string;
+  };
+  score: number;
+  classification: "Baixo" | "Médio" | "Alto" | "Crítico";
+  flags: RiskFlag[];
+  sources: DataSource[];
+  summary: string;
+  analyzed_at: string;
+  related_entities: {
+    reverse_lookup: {
+      status: "success" | "not_found";
+      total_companies: number;
+      providers: PartnerReverseLookupProviderStatus[];
+      items: PartnerRelatedCompany[];
+    };
+  };
+  meta?: {
+    partial: boolean;
+    sources_version: string;
+    mode: "partner_scan";
+    partner_search_id?: string;
+    search_requested_at?: string | null;
+    search_analyzed_at?: string | null;
+  };
+}
+
 export interface InvestigationStatus {
   id: string;
   root_cnpj: string;

@@ -4,6 +4,7 @@ import { Search, Shield, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatCNPJ, cleanCNPJ, isValidCNPJ } from "@/lib/cnpj";
+import { Link } from "react-router-dom";
 
 interface CNPJSearchProps {
   onSearch: (cnpj: string) => void;
@@ -88,6 +89,12 @@ export function CNPJSearch({ onSearch, isLoading }: CNPJSearchProps) {
           </motion.p>
         )}
       </form>
+      <p className="text-xs text-muted-foreground">
+        Precisa analisar um sócio específico?{" "}
+        <Link to="/socio" className="text-primary hover:underline">
+          Abrir scan individual
+        </Link>
+      </p>
     </motion.div>
   );
 }

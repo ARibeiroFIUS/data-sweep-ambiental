@@ -4,13 +4,17 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeCnpj, HttpError } from "./analyze-cnpj.mjs";
+import { analyzePartner, PartnerHttpError } from "./analyze-partner.mjs";
 import { generateIntelligenceReport } from "./ai-synthesis.mjs";
 import { runPgfnSyncJob } from "./pgfn-sync.mjs";
 import { recoverStaleJobRuns, getPgfnSourceStatus } from "./source-index-store.mjs";
 import { PGFN_SOURCE_IDS } from "./source-registry.mjs";
 import {
+  createPartnerSearchQuery,
   createSearchQuery,
+  getPartnerSearchQueryById,
   getSearchQueryById,
+  listPartnerSearchQueries,
   listSearchQueries,
   updateSearchQueryResult,
 } from "./investigation-store.mjs";
@@ -52,6 +56,12 @@ function normalizeCnpj(value) {
   return String(value ?? "")
     .replace(/\D/g, "")
     .slice(0, 14);
+}
+
+function normalizeCpf(value) {
+  return String(value ?? "")
+    .replace(/\D/g, "")
+    .slice(0, 11);
 }
 
 function attachSearchMeta(result, searchMeta = {}) {
@@ -686,6 +696,177 @@ const server = http.createServer(async (req, res) => {
 
       console.error("Unhandled API error:", error);
       sendJson(res, 500, { error: "Erro interno ao processar a consulta" });
+    }
+    return;
+  }
+
+  if (pathname === "/api/analyze-partner") {
+    setApiCorsHeaders(res);
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Método não permitido" });
+      return;
+    }
+
+    try {
+      const body = await readJsonBody(req);
+      const cnpj = typeof body === "object" && body !== null && "cnpj" in body ? body.cnpj : "";
+      const cpf = typeof body === "object" && body !== null && "cpf" in body ? body.cpf : "";
+      const nome = typeof body === "object" && body !== null && "nome" in body ? body.nome : "";
+
+      const result = await analyzePartner({
+        cnpj: String(cnpj ?? ""),
+        cpf: String(cpf ?? ""),
+        nome: String(nome ?? ""),
+      });
+
+      const normalizedCnpj = normalizeCnpj(cnpj);
+      const normalizedCpf = normalizeCpf(cpf);
+      let payload = result;
+
+      if (normalizedCnpj.length === 14 && normalizedCpf.length === 11) {
+        const searchId = crypto.randomUUID();
+        payload = attachSearchMeta(result, { partner_search_id: searchId });
+
+        try {
+          await createPartnerSearchQuery({
+            id: searchId,
+            cnpj: normalizedCnpj,
+            cpf: normalizedCpf,
+            nome:
+              payload &&
+              typeof payload === "object" &&
+              payload.person &&
+              typeof payload.person === "object" &&
+              typeof payload.person.nome === "string"
+                ? payload.person.nome
+                : String(nome ?? "").trim(),
+            analyzedAt:
+              payload && typeof payload === "object" && typeof payload.analyzed_at === "string"
+                ? payload.analyzed_at
+                : new Date().toISOString(),
+            result: payload,
+          });
+        } catch (storeError) {
+          console.error("[partner-search-history] failed to persist partner search query:", storeError);
+        }
+      }
+
+      sendJson(res, 200, payload);
+    } catch (error) {
+      if (error instanceof PartnerHttpError) {
+        sendJson(res, error.statusCode, { error: error.message });
+        return;
+      }
+
+      console.error("[analyze-partner] unhandled API error:", error);
+      sendJson(res, 500, { error: "Erro interno ao processar a consulta de sócio" });
+    }
+    return;
+  }
+
+  // ── GET /api/partner-searches[?cnpj=&cpf=&limit=&offset=] ───────────────
+  if (pathname === "/api/partner-searches") {
+    setApiCorsHeaders(res);
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (req.method !== "GET") {
+      sendJson(res, 405, { error: "Método não permitido" });
+      return;
+    }
+
+    try {
+      const cnpj = requestUrl.searchParams.get("cnpj") ?? "";
+      const cpf = requestUrl.searchParams.get("cpf") ?? "";
+      const limit = Number.parseInt(requestUrl.searchParams.get("limit") ?? "20", 10);
+      const offset = Number.parseInt(requestUrl.searchParams.get("offset") ?? "0", 10);
+      const rows = await listPartnerSearchQueries({ cnpj, cpf, limit, offset });
+
+      const items = rows.map((row) => {
+        const result = row.result_json && typeof row.result_json === "object" ? row.result_json : {};
+        return {
+          partner_search_id: row.id,
+          cnpj: row.cnpj,
+          cpf: row.cpf,
+          nome: row.nome,
+          requested_at: row.requested_at,
+          analyzed_at: row.analyzed_at,
+          score: typeof result.score === "number" ? result.score : null,
+          classification: typeof result.classification === "string" ? result.classification : null,
+          summary: typeof result.summary === "string" ? result.summary : null,
+          company_name:
+            result.company_context &&
+            typeof result.company_context === "object" &&
+            typeof result.company_context.razao_social === "string"
+              ? result.company_context.razao_social
+              : null,
+        };
+      });
+
+      sendJson(res, 200, {
+        items,
+        count: items.length,
+      });
+    } catch (error) {
+      console.error("[partner-search-history] list error:", error);
+      sendJson(res, 500, { error: "Erro ao listar histórico de buscas de sócio" });
+    }
+    return;
+  }
+
+  // ── GET /api/partner-searches/:partner_search_id ─────────────────────────
+  if (pathname.startsWith("/api/partner-searches/")) {
+    setApiCorsHeaders(res);
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (req.method !== "GET") {
+      sendJson(res, 405, { error: "Método não permitido" });
+      return;
+    }
+
+    const match = pathname.match(/^\/api\/partner-searches\/([^/]+)$/);
+    if (!match) {
+      sendJson(res, 404, { error: "Endpoint de busca de sócio não encontrado" });
+      return;
+    }
+
+    const searchId = decodeURIComponent(match[1]);
+    try {
+      const row = await getPartnerSearchQueryById(searchId);
+      if (!row) {
+        sendJson(res, 404, { error: "Busca de sócio não encontrada" });
+        return;
+      }
+
+      const baseResult = row.result_json && typeof row.result_json === "object" ? row.result_json : {};
+      const payload = attachSearchMeta(baseResult, {
+        partner_search_id: row.id,
+        search_requested_at: row.requested_at ? new Date(row.requested_at).toISOString() : null,
+        search_analyzed_at:
+          row.analyzed_at && Number.isFinite(new Date(row.analyzed_at).getTime())
+            ? new Date(row.analyzed_at).toISOString()
+            : null,
+      });
+      sendJson(res, 200, payload);
+    } catch (error) {
+      console.error("[partner-search-history] get error:", error);
+      sendJson(res, 500, { error: "Erro ao consultar busca de sócio salva" });
     }
     return;
   }
