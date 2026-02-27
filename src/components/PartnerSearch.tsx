@@ -12,6 +12,7 @@ interface PartnerSearchProps {
   initialValues?: {
     cnpj?: string;
     cpf?: string;
+    cpfHint?: string;
     nome?: string;
   };
 }
@@ -19,15 +20,17 @@ interface PartnerSearchProps {
 export function PartnerSearch({ onSearch, isLoading, initialValues }: PartnerSearchProps) {
   const [cnpj, setCnpj] = useState(() => formatCNPJ(initialValues?.cnpj ?? ""));
   const [cpf, setCpf] = useState(() => formatCPF(initialValues?.cpf ?? ""));
+  const [cpfHint, setCpfHint] = useState(() => String(initialValues?.cpfHint ?? "").trim());
   const [nome, setNome] = useState(() => String(initialValues?.nome ?? ""));
   const [error, setError] = useState("");
 
   useEffect(() => {
     setCnpj(formatCNPJ(initialValues?.cnpj ?? ""));
     setCpf(formatCPF(initialValues?.cpf ?? ""));
+    setCpfHint(String(initialValues?.cpfHint ?? "").trim());
     setNome(String(initialValues?.nome ?? ""));
     setError("");
-  }, [initialValues?.cnpj, initialValues?.cpf, initialValues?.nome]);
+  }, [initialValues?.cnpj, initialValues?.cpf, initialValues?.cpfHint, initialValues?.nome]);
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -97,6 +100,11 @@ export function PartnerSearch({ onSearch, isLoading, initialValues }: PartnerSea
             maxLength={14}
           />
         </div>
+        {cpfHint && cleanCPF(cpf).length !== 11 && (
+          <p className="text-xs text-muted-foreground">
+            CPF no QSA: <span className="font-mono">{cpfHint}</span>. Complete o CPF para continuar.
+          </p>
+        )}
         <Input
           value={nome}
           onChange={(event) => {

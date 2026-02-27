@@ -82,11 +82,13 @@ function getPartnerPrefillFromSearch(search: string) {
   const params = new URLSearchParams(search);
   const cnpj = (params.get("cnpj") ?? "").replace(/\D/g, "").slice(0, 14);
   const cpf = (params.get("cpf") ?? "").replace(/\D/g, "").slice(0, 11);
+  const cpfHint = (params.get("cpf_hint") ?? "").trim();
   const nome = (params.get("nome") ?? "").trim();
 
   return {
     cnpj,
     cpf,
+    cpfHint,
     nome,
   };
 }
