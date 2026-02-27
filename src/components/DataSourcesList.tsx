@@ -27,6 +27,12 @@ function reasonLabel(reason?: string) {
     partial_coverage_no_match: "Cobertura parcial; sem match confirmado.",
     entity_lookup_not_supported_public_api: "API pública sem lookup por entidade.",
     timeout_or_network: "Falha de rede/timeout.",
+    no_related_companies: "Sem empresas relacionadas encontradas.",
+    missing_api_key: "Chave de API não configurada.",
+    unauthorized: "Acesso não autorizado na fonte.",
+    rate_limited: "Fonte limitou o volume de consultas.",
+    index_load_failed: "Falha ao carregar índice da fonte.",
+    ok: "Consulta executada com sucesso.",
     no_tribunal_response: "Tribunal não respondeu de forma consultável.",
   };
 

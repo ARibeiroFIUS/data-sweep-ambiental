@@ -8,6 +8,10 @@ import { getSourceConfig, isSourceEnabled, SOURCES_VERSION } from "./source-regi
 const PORTAL_TRANSPARENCIA_API_KEY = (process.env.PORTAL_TRANSPARENCIA_API_KEY ?? "").trim();
 const TCU_ELEITORAL_URL =
   "https://sites.tcu.gov.br/dados-abertos/inidoneos-irregulares/arquivos/resp-contas-julgadas-irreg-implicacao-eleitoral.csv";
+const EXTRA_SOURCE_NAMES = {
+  reverse_lookup_bigquery: "Reverse Lookup PF->PJ (BigQuery)",
+  reverse_lookup_brasilio: "Reverse Lookup PF->PJ (Brasil.io)",
+};
 
 /** @type {{ fetchedAt: number, cpfs: Set<string> } | null} */
 let tcuEleitoralCache = null;
@@ -51,6 +55,7 @@ function isValidCpf(cpf) {
 }
 
 function sourceName(sourceId) {
+  if (EXTRA_SOURCE_NAMES[sourceId]) return EXTRA_SOURCE_NAMES[sourceId];
   try {
     return getSourceConfig(sourceId).name;
   } catch {
@@ -208,12 +213,16 @@ async function queryCguByCpf({ sourceId, endpoint, queryParamName, cpf }) {
   const url =
     `https://api.portaldatransparencia.gov.br/api-de-dados/${endpoint}` +
     `?${queryParamName}=${encodeURIComponent(cpf)}&pagina=1`;
-  const response = await fetchWithTimeout(url, timeoutMs, {
-    headers: {
-      "chave-api-dados": PORTAL_TRANSPARENCIA_API_KEY,
-      accept: "application/json",
-    },
-  });
+  const headers = {
+    "chave-api-dados": PORTAL_TRANSPARENCIA_API_KEY,
+    accept: "application/json",
+  };
+
+  let response = await fetchWithTimeout(url, timeoutMs, { headers });
+  // Retry simples para mitigar indisponibilidade intermitente da CGU.
+  if (!response || response.status >= 500) {
+    response = await fetchWithTimeout(url, Math.min(timeoutMs * 2, 30_000), { headers });
+  }
 
   if (!response) {
     return {
@@ -358,6 +367,34 @@ function mergeRelatedCompanies(items, provider, outMap) {
   }
 }
 
+function cnpjRoot(cnpj) {
+  const clean = cleanDocument(cnpj);
+  return clean.length === 14 ? clean.slice(0, 8) : "";
+}
+
+function summarizeReverseLookup(items, contextCnpj) {
+  const contextRoot = cnpjRoot(contextCnpj);
+  const roots = new Map();
+  let sameContextRootCompanies = 0;
+  let differentRootCompanies = 0;
+
+  for (const item of Array.isArray(items) ? items : []) {
+    const root = cnpjRoot(item?.cnpj);
+    if (!root) continue;
+    roots.set(root, (roots.get(root) ?? 0) + 1);
+    if (contextRoot && root === contextRoot) sameContextRootCompanies += 1;
+    else differentRootCompanies += 1;
+  }
+
+  return {
+    context_root: contextRoot,
+    distinct_roots: roots.size,
+    same_context_root_companies: sameContextRootCompanies,
+    different_root_companies: differentRootCompanies,
+    by_root: Array.from(roots.entries()).map(([root, companies]) => ({ root, companies })),
+  };
+}
+
 async function queryReverseLookup(cpf, nome) {
   const companyMap = new Map();
   const providerStatuses = [];
@@ -483,7 +520,19 @@ export async function analyzePartner(input) {
   }
 
   const partnerName = partnerOwnership.partner?.nome || nome || "Sócio PF";
-  const [ceafResult, servidoresResult, tcuResult, reverseResult] = await Promise.all([
+  const [ceisResult, cnepResult, ceafResult, servidoresResult, tcuResult, reverseResult] = await Promise.all([
+    queryCguByCpf({
+      sourceId: "cgu_ceis",
+      endpoint: "ceis",
+      queryParamName: "codigoSancionado",
+      cpf,
+    }),
+    queryCguByCpf({
+      sourceId: "cgu_cnep",
+      endpoint: "cnep",
+      queryParamName: "codigoSancionado",
+      cpf,
+    }),
     queryCguByCpf({
       sourceId: "cgu_ceaf",
       endpoint: "ceaf",
@@ -499,7 +548,43 @@ export async function analyzePartner(input) {
     queryTcuEleitoralByCpf(cpf),
     queryReverseLookup(cpf, partnerName),
   ]);
-  sources.push(ceafResult.source, servidoresResult.source, tcuResult.source);
+  sources.push(ceisResult.source, cnepResult.source, ceafResult.source, servidoresResult.source, tcuResult.source);
+
+  if (ceisResult.records.length > 0) {
+    flags.push({
+      id: "cgu_ceis_socio_sancionado",
+      source: "CGU",
+      source_id: "cgu_ceis",
+      severity: "high",
+      title: "Sócio listado no CEIS",
+      description: `${partnerName} consta no CEIS (Cadastro de Empresas Inidôneas e Suspensas).`,
+      weight: 25,
+      confidence_level: "CONFIRMADO",
+      verification_status: "objective",
+      evidence: [
+        { label: "Sócio", value: partnerName },
+        { label: "CPF", value: cpf },
+      ],
+    });
+  }
+
+  if (cnepResult.records.length > 0) {
+    flags.push({
+      id: "cgu_cnep_socio_sancionado",
+      source: "CGU",
+      source_id: "cgu_cnep",
+      severity: "high",
+      title: "Sócio listado no CNEP",
+      description: `${partnerName} consta no CNEP (Cadastro Nacional de Empresas Punidas).`,
+      weight: 30,
+      confidence_level: "CONFIRMADO",
+      verification_status: "objective",
+      evidence: [
+        { label: "Sócio", value: partnerName },
+        { label: "CPF", value: cpf },
+      ],
+    });
+  }
 
   if (ceafResult.records.length > 0) {
     const sample = ceafResult.records[0] ?? null;
@@ -586,7 +671,11 @@ export async function analyzePartner(input) {
     ),
   );
 
-  if (reverseResult.items.length >= 4) {
+  const reverseSummary = summarizeReverseLookup(reverseResult.items, cnpj);
+  const shouldCreateMultiCompanyFlag =
+    reverseSummary.different_root_companies >= 3 || reverseSummary.distinct_roots >= 3;
+
+  if (shouldCreateMultiCompanyFlag) {
     const verificationStatus = reverseResult.verification === "objective" ? "objective" : "probable";
     const confidenceLevel = verificationStatus === "objective" ? "CONFIRMADO" : "PROVAVEL";
     flags.push({
@@ -596,7 +685,8 @@ export async function analyzePartner(input) {
       severity: "medium",
       title: "Sócio com múltiplas empresas relacionadas",
       description:
-        `${partnerName} está ligado a ${reverseResult.items.length} empresa(s) no reverse lookup PF->PJ.` +
+        `${partnerName} está ligado a ${reverseResult.items.length} empresa(s) no reverse lookup PF->PJ ` +
+        `(${reverseSummary.distinct_roots} raiz(es) de CNPJ distintas).` +
         (verificationStatus === "objective"
           ? " Há confirmação por CPF completo."
           : " A confirmação foi obtida por perfil mascarado (nome + CPF parcial)."),
@@ -614,6 +704,29 @@ export async function analyzePartner(input) {
             .map((item) => item.cnpj)
             .join(", "),
         },
+        { label: "Raízes de CNPJ distintas", value: String(reverseSummary.distinct_roots) },
+      ],
+    });
+  } else if (reverseSummary.same_context_root_companies >= 2 && reverseSummary.different_root_companies === 0) {
+    const verificationStatus = reverseResult.verification === "objective" ? "objective" : "probable";
+    const confidenceLevel = verificationStatus === "objective" ? "CONFIRMADO" : "PROVAVEL";
+    flags.push({
+      id: "network_pf_filiais_mesma_empresa",
+      source: "Análise de Rede Societária",
+      source_id: "network",
+      severity: "low",
+      title: "Relacionamento concentrado em matriz/filiais da mesma empresa",
+      description:
+        `${partnerName} aparece em ${reverseSummary.same_context_root_companies} estabelecimento(s) ` +
+        "da mesma raiz de CNPJ da empresa analisada (matriz/filiais), sem expansão relevante para outras raízes.",
+      weight: 0,
+      confidence_level: confidenceLevel,
+      verification_status: verificationStatus,
+      evidence: [
+        { label: "Sócio", value: partnerName },
+        { label: "CPF", value: cpf },
+        { label: "Raiz da empresa analisada", value: reverseSummary.context_root || "—" },
+        { label: "Estabelecimentos na mesma raiz", value: String(reverseSummary.same_context_root_companies) },
       ],
     });
   }
@@ -649,6 +762,7 @@ export async function analyzePartner(input) {
       reverse_lookup: {
         status: reverseResult.items.length > 0 ? "success" : "not_found",
         total_companies: reverseResult.items.length,
+        summary: reverseSummary,
         providers: reverseResult.providerStatuses,
         items: reverseResult.items,
       },

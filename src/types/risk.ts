@@ -269,6 +269,13 @@ export interface PartnerRiskAnalysis {
     reverse_lookup: {
       status: "success" | "not_found";
       total_companies: number;
+      summary?: {
+        context_root: string;
+        distinct_roots: number;
+        same_context_root_companies: number;
+        different_root_companies: number;
+        by_root: Array<{ root: string; companies: number }>;
+      };
       providers: PartnerReverseLookupProviderStatus[];
       items: PartnerRelatedCompany[];
     };
