@@ -293,7 +293,7 @@ export function RiskReport({ data, onBack }: RiskReportProps) {
       <CompanyInfoGrid company={data.company} />
 
       {/* QSA */}
-      <QSATable partners={data.company.qsa} />
+      <QSATable partners={data.company.qsa} companyCnpj={data.company.cnpj} />
 
       {(partnerCompanies || pfReverse) && (
         <div className="glass-card p-6 space-y-4">

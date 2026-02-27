@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Search, UserRoundSearch, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,13 +9,25 @@ import { cleanCPF, formatCPF, isValidCPF } from "@/lib/cpf";
 interface PartnerSearchProps {
   onSearch: (input: { cnpj: string; cpf: string; nome: string }) => void;
   isLoading: boolean;
+  initialValues?: {
+    cnpj?: string;
+    cpf?: string;
+    nome?: string;
+  };
 }
 
-export function PartnerSearch({ onSearch, isLoading }: PartnerSearchProps) {
-  const [cnpj, setCnpj] = useState("");
-  const [cpf, setCpf] = useState("");
-  const [nome, setNome] = useState("");
+export function PartnerSearch({ onSearch, isLoading, initialValues }: PartnerSearchProps) {
+  const [cnpj, setCnpj] = useState(() => formatCNPJ(initialValues?.cnpj ?? ""));
+  const [cpf, setCpf] = useState(() => formatCPF(initialValues?.cpf ?? ""));
+  const [nome, setNome] = useState(() => String(initialValues?.nome ?? ""));
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    setCnpj(formatCNPJ(initialValues?.cnpj ?? ""));
+    setCpf(formatCPF(initialValues?.cpf ?? ""));
+    setNome(String(initialValues?.nome ?? ""));
+    setError("");
+  }, [initialValues?.cnpj, initialValues?.cpf, initialValues?.nome]);
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();

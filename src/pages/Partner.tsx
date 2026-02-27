@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PartnerSearch } from "@/components/PartnerSearch";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { PartnerReport } from "@/components/PartnerReport";
 import { useToast } from "@/hooks/use-toast";
 import type { PartnerRiskAnalysis } from "@/types/risk";
+import { useLocation } from "react-router-dom";
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 const ANALYZE_PARTNER_ENDPOINT = API_BASE_URL ? `${API_BASE_URL}/api/analyze-partner` : "/api/analyze-partner";
@@ -71,19 +72,34 @@ function setPartnerSearchIdInUrl(partnerSearchId: string | null) {
   window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
-function getInitialPartnerSearchIdFromUrl() {
-  const pathMatch = window.location.pathname.match(/^\/socio\/relatorio\/([^/]+)$/);
+function getPartnerSearchIdFromLocation(pathname: string, search: string) {
+  const pathMatch = pathname.match(/^\/socio\/relatorio\/([^/]+)$/);
   if (pathMatch?.[1]) return decodeURIComponent(pathMatch[1]);
-  return new URLSearchParams(window.location.search).get("partner_search_id");
+  return new URLSearchParams(search).get("partner_search_id");
+}
+
+function getPartnerPrefillFromSearch(search: string) {
+  const params = new URLSearchParams(search);
+  const cnpj = (params.get("cnpj") ?? "").replace(/\D/g, "").slice(0, 14);
+  const cpf = (params.get("cpf") ?? "").replace(/\D/g, "").slice(0, 11);
+  const nome = (params.get("nome") ?? "").trim();
+
+  return {
+    cnpj,
+    cpf,
+    nome,
+  };
 }
 
 export default function Partner() {
+  const location = useLocation();
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<PartnerRiskAnalysis | null>(null);
   const { toast } = useToast();
+  const prefill = useMemo(() => getPartnerPrefillFromSearch(location.search), [location.search]);
 
   useEffect(() => {
-    const initialId = getInitialPartnerSearchIdFromUrl();
+    const initialId = getPartnerSearchIdFromLocation(location.pathname, location.search);
     if (!initialId) return;
 
     let cancelled = false;
@@ -110,7 +126,7 @@ export default function Partner() {
     return () => {
       cancelled = true;
     };
-  }, [toast]);
+  }, [location.pathname, location.search, toast]);
 
   const handleSearch = async (input: { cnpj: string; cpf: string; nome: string }) => {
     setIsLoading(true);
@@ -138,7 +154,7 @@ export default function Partner() {
 
   return (
     <main className="min-h-screen p-6 md:p-12">
-      {!result && !isLoading && <PartnerSearch onSearch={handleSearch} isLoading={isLoading} />}
+      {!result && !isLoading && <PartnerSearch onSearch={handleSearch} isLoading={isLoading} initialValues={prefill} />}
       {isLoading && <LoadingOverlay />}
       {result && <PartnerReport data={result} onBack={handleBack} />}
     </main>

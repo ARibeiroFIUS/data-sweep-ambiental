@@ -1,12 +1,18 @@
 import { motion } from "framer-motion";
 import { Users } from "lucide-react";
 import type { Partner } from "@/types/risk";
+import { Link } from "react-router-dom";
 
 interface QSATableProps {
   partners: Partner[];
+  companyCnpj: string;
 }
 
-export function QSATable({ partners }: QSATableProps) {
+function cleanDigits(value: string | undefined) {
+  return String(value ?? "").replace(/\D/g, "");
+}
+
+export function QSATable({ partners, companyCnpj }: QSATableProps) {
   if (!partners || partners.length === 0) return null;
 
   return (
@@ -27,6 +33,7 @@ export function QSATable({ partners }: QSATableProps) {
               <th className="text-left py-3 px-3 text-xs uppercase tracking-wider text-muted-foreground font-medium">Nome</th>
               <th className="text-left py-3 px-3 text-xs uppercase tracking-wider text-muted-foreground font-medium">Tipo</th>
               <th className="text-left py-3 px-3 text-xs uppercase tracking-wider text-muted-foreground font-medium">Qualificação</th>
+              <th className="text-left py-3 px-3 text-xs uppercase tracking-wider text-muted-foreground font-medium">Ação</th>
             </tr>
           </thead>
           <tbody>
@@ -41,6 +48,24 @@ export function QSATable({ partners }: QSATableProps) {
                   </span>
                 </td>
                 <td className="py-3 px-3 text-muted-foreground">{p.qual}</td>
+                <td className="py-3 px-3">
+                  {(p.tipo ?? "PF") === "PF" ? (
+                    <Link
+                      to={`/socio?cnpj=${encodeURIComponent(cleanDigits(companyCnpj))}&nome=${encodeURIComponent(
+                        p.nome ?? "",
+                      )}&cpf=${encodeURIComponent(
+                        cleanDigits(p.cnpj_cpf_do_socio).length === 11
+                          ? cleanDigits(p.cnpj_cpf_do_socio)
+                          : "",
+                      )}`}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      Scan sócio
+                    </Link>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
