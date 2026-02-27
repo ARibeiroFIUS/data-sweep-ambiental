@@ -11,7 +11,27 @@ const statusConfig = {
   not_found: { icon: CheckCircle2, color: "text-risk-low", label: "Sem registros" },
   error: { icon: XCircle, color: "text-risk-high", label: "Erro" },
   unavailable: { icon: MinusCircle, color: "text-muted-foreground", label: "Indisponível" },
+  running: { icon: AlertCircle, color: "text-primary", label: "Em andamento" },
 };
+
+function reasonLabel(reason?: string) {
+  const value = String(reason ?? "").trim();
+  if (!value) return null;
+
+  const map: Record<string, string> = {
+    deferred_to_crawler: "DataJud não processado nesta etapa (aguardando crawler).",
+    deferred_datajud_enrichment: "DataJud adiado para enriquecimento pós-crawler.",
+    queued_async: "Processamento assíncrono em background.",
+    match_found: "Fonte consultada com registros.",
+    not_listed: "Fonte consultada sem registros.",
+    partial_coverage_no_match: "Cobertura parcial; sem match confirmado.",
+    entity_lookup_not_supported_public_api: "API pública sem lookup por entidade.",
+    timeout_or_network: "Falha de rede/timeout.",
+    no_tribunal_response: "Tribunal não respondeu de forma consultável.",
+  };
+
+  return map[value] ?? value;
+}
 
 export function DataSourcesList({ sources }: DataSourcesListProps) {
   return (
@@ -31,6 +51,7 @@ export function DataSourcesList({ sources }: DataSourcesListProps) {
           const Icon = config.icon;
           const hasLatency = typeof source.latency_ms === "number" && source.latency_ms >= 0;
           const hasEvidence = typeof source.evidence_count === "number";
+          const reason = reasonLabel(source.status_reason);
           return (
             <div
               key={i}
@@ -38,7 +59,10 @@ export function DataSourcesList({ sources }: DataSourcesListProps) {
             >
               <div className="flex items-center gap-3 min-w-0">
                 <Icon className={`w-4 h-4 ${config.color} shrink-0`} />
-                <span className="text-sm truncate">{source.name}</span>
+                <div className="min-w-0">
+                  <span className="text-sm truncate block">{source.name}</span>
+                  {reason && <span className="text-[11px] text-muted-foreground block truncate">{reason}</span>}
+                </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {hasEvidence && (

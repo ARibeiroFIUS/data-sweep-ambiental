@@ -23,6 +23,10 @@ Execute no Postgres:
 
 ```sql
 \i db/migrations/001_source_indexes.sql
+\i db/migrations/002_deep_investigations.sql
+\i db/migrations/003_judicial_coverage.sql
+\i db/migrations/004_search_history.sql
+\i db/migrations/005_brasilio_reverse_lookup_cache.sql
 ```
 
 Ou rode o conteúdo do arquivo manualmente.
@@ -68,8 +72,56 @@ Todas default `true`.
 - `FEATURE_PGFN_FGTS`
 - `FEATURE_PGFN_PREVIDENCIARIO`
 - `FEATURE_PGFN_NAO_PREVIDENCIARIO`
+- `FEATURE_DATAJUD`
+- `FEATURE_JUDICIAL_CRAWLER`
+- `FEATURE_JUDICIAL_DATAJUD`
+- `FEATURE_JUDICIAL_PJE`
+- `FEATURE_JUDICIAL_ESAJ`
+- `FEATURE_JUDICIAL_EPROC`
+- `FEATURE_JUDICIAL_PROJUDI`
+- `FEATURE_JUDICIAL_CUSTOM`
 
-## 7) Operação
+## 8) Variáveis opcionais da investigação profunda
+
+- `INVESTIGATION_MAX_DEPTH` (default `5`)
+- `INVESTIGATION_MAX_ENTITIES` (default `1200`)
+- `INVESTIGATION_MAX_SECONDS` (default `1500`)
+- `INVESTIGATION_NODE_CONCURRENCY` (default `4`)
+- `INVESTIGATION_HARD_MAX_DEPTH` (default `8`)
+- `INVESTIGATION_HARD_MAX_ENTITIES` (default `2500`)
+- `INVESTIGATION_HARD_MAX_SECONDS` (default `7200`)
+- `INVESTIGATION_HARD_MAX_NODE_CONCURRENCY` (default `8`)
+- `INVESTIGATION_RELEVANCE_THRESHOLD` (default `0.3`)
+- `JUDICIAL_TRIBUNAL_CONCURRENCY` (default `12`)
+- `JUDICIAL_MAX_TRIBUNAIS_PER_ENTITY` (default `120`)
+
+### BigQuery (reverse PF -> empresas)
+
+- `BIGQUERY_PROJECT_ID`
+- `BIGQUERY_LOCATION`
+- `BIGQUERY_SOCIOS_TABLE`
+- `BIGQUERY_EMPRESAS_TABLE`
+- `BIGQUERY_ESTABELECIMENTOS_TABLE`
+- `BIGQUERY_CREDENTIALS_JSON`
+- (opcional) `BIGQUERY_REVERSE_SQL` para query customizada
+
+### Brasil.io (fallback reverse PF -> empresas por CPF mascarado + nome)
+
+- `BRASILIO_REVERSE_LOOKUP_ENABLED` (default `true`)
+- `BRASILIO_REVERSE_SCAN_ENABLED` (default `true`)
+- `BRASILIO_REVERSE_SCAN_TIMEOUT_MS` (default `90000`)
+- `BRASILIO_REVERSE_MAX_MATCHES` (default `40`)
+- `BRASILIO_REVERSE_CACHE_TTL_HOURS` (default `720`)
+- `BRASILIO_REVERSE_SCANS_PER_RUN` (default `20`)
+- (opcional) `BRASILIO_SOCIOS_URL` (default `https://data.brasil.io/dataset/socios-brasil/socios.csv.gz`)
+
+## 9) Endpoints da investigação profunda
+
+- `GET /api/investigations/:run_id`
+- `GET /api/investigations/:run_id/graph`
+- `GET /api/investigations/:run_id/events?cursor=0`
+
+## 10) Operação
 
 - A API de análise usa índice PGFN no Postgres (sem download de ZIP em request).
 - Se índice PGFN não estiver pronto, as fontes PGFN retornam `unavailable` com `status_reason`.

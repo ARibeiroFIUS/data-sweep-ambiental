@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   cleanDocument,
   mapWithConcurrency,
@@ -10,10 +12,15 @@ import { fetchWithTimeout } from "./http-utils.mjs";
 import { getIndexedSourceMatch, getLatestSnapshotAt, isSourceIndexStoreEnabled } from "./source-index-store.mjs";
 import { getSourceConfig, isSourceEnabled, PGFN_SOURCE_IDS, SOURCES_VERSION } from "./source-registry.mjs";
 import { calculateScore } from "./risk-scoring.mjs";
+import { calculateDisambiguationScore, applyConvergenceBonus } from "./disambiguation-engine.mjs";
+import { generateIntelligenceReport } from "./ai-synthesis.mjs";
+import { enqueueDeepInvestigation } from "./investigation-orchestrator.mjs";
+import { queryProcessosByCnpj, isDatajudEnabled } from "./datajud-query.mjs";
 
 const PORTAL_TRANSPARENCIA_API_KEY = (process.env.PORTAL_TRANSPARENCIA_API_KEY ?? "").trim();
 const SOCIO_CPF_QUERY_LIMIT = Number.parseInt(process.env.SOCIO_CPF_QUERY_LIMIT ?? "25", 10);
 const SOCIO_CPF_CONCURRENCY = Number.parseInt(process.env.SOCIO_CPF_CONCURRENCY ?? "4", 10);
+const execFileAsync = promisify(execFile);
 
 const TCU_LICITANTES_URL =
   "https://sites.tcu.gov.br/dados-abertos/inidoneos-irregulares/arquivos/licitantes-inidoneos.csv";
@@ -53,6 +60,178 @@ function buildSourceStatus(sourceId, status, data = {}) {
   if (data.statusReason) payload.status_reason = data.statusReason;
 
   return payload;
+}
+
+function normalizeFlagVerification(flag) {
+  const explicit = String(flag?.verification_status ?? "").toLowerCase();
+  if (explicit === "objective" || explicit === "probable" || explicit === "possible") {
+    return explicit;
+  }
+
+  const level = String(flag?.confidence_level ?? "").toUpperCase();
+  if (level === "PROVAVEL") return "probable";
+  if (level === "POSSIVEL") return "possible";
+  return "objective";
+}
+
+function withVerificationStatus(flag) {
+  return {
+    ...flag,
+    verification_status: normalizeFlagVerification(flag),
+  };
+}
+
+function getValueByPath(record, path) {
+  if (!record || typeof record !== "object") return undefined;
+  const segments = String(path).split(".");
+
+  let current = record;
+  for (const segment of segments) {
+    if (!current || typeof current !== "object") return undefined;
+    current = current[segment];
+  }
+
+  return current;
+}
+
+function normalizeEvidenceValue(value) {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    const rendered = value
+      .map((item) => normalizeEvidenceValue(item))
+      .filter(Boolean)
+      .slice(0, 3)
+      .join(", ");
+    return rendered;
+  }
+  if (typeof value === "object") {
+    const namedValue = value.nome ?? value.descricao ?? value.nomeOrgao ?? value.sigla ?? value.codigo;
+    if (namedValue) return String(namedValue).trim();
+    return "";
+  }
+  return "";
+}
+
+function buildEvidenceItems(record, fieldSpecs) {
+  if (!record || typeof record !== "object") return [];
+
+  const items = [];
+  for (const field of fieldSpecs) {
+    const candidatePaths = Array.isArray(field.paths) ? field.paths : [field.paths];
+    let normalizedValue = "";
+
+    for (const candidatePath of candidatePaths) {
+      const rawValue = getValueByPath(record, candidatePath);
+      normalizedValue = normalizeEvidenceValue(rawValue);
+      if (normalizedValue) break;
+    }
+
+    if (!normalizedValue) continue;
+    items.push({
+      label: field.label,
+      value: normalizedValue,
+    });
+  }
+
+  return items.slice(0, 6);
+}
+
+function collectRecordDocuments(record) {
+  const candidates = [
+    getValueByPath(record, "sancionado.codigoFormatado"),
+    getValueByPath(record, "sancionado.cnpjFormatado"),
+    getValueByPath(record, "sancionado.cnpj"),
+    getValueByPath(record, "pessoa.cnpjFormatado"),
+    getValueByPath(record, "pessoa.cnpj"),
+    getValueByPath(record, "pessoaJuridica.cnpjFormatado"),
+    getValueByPath(record, "pessoaJuridica.cnpj"),
+  ];
+
+  const sanctions = getValueByPath(record, "sancoes");
+  if (Array.isArray(sanctions)) {
+    for (const sanction of sanctions) {
+      candidates.push(sanction?.cnpjFormatado);
+      candidates.push(sanction?.cnpj);
+    }
+  }
+
+  return candidates
+    .map((value) => cleanDocument(value))
+    .filter((value) => value.length === 14);
+}
+
+async function fetchJsonViaCurl(url, timeoutMs, headers) {
+  const seconds = Math.max(5, Math.ceil(timeoutMs / 1000));
+  const args = ["-sS", "--max-time", String(seconds), "-w", "\\n__HTTP_STATUS__:%{http_code}\\n"];
+
+  for (const [key, value] of Object.entries(headers ?? {})) {
+    if (value === undefined || value === null || value === "") continue;
+    args.push("-H", `${key}: ${value}`);
+  }
+
+  args.push(url);
+
+  try {
+    const { stdout } = await execFileAsync("curl", args, { maxBuffer: 25 * 1024 * 1024 });
+    const marker = "\n__HTTP_STATUS__:";
+    const markerIndex = stdout.lastIndexOf(marker);
+    if (markerIndex < 0) {
+      return { kind: "invalid_json", statusCode: 0, payload: null };
+    }
+
+    const body = stdout.slice(0, markerIndex).trim();
+    const statusCode = Number.parseInt(stdout.slice(markerIndex + marker.length).trim(), 10) || 0;
+
+    if (statusCode === 401 || statusCode === 403) {
+      return { kind: "unauthorized", statusCode, payload: null };
+    }
+    if (statusCode === 429) {
+      return { kind: "rate_limited", statusCode, payload: null };
+    }
+    if (statusCode < 200 || statusCode >= 300) {
+      return { kind: "http_error", statusCode, payload: null };
+    }
+
+    if (!body) {
+      return { kind: "success", statusCode, payload: [] };
+    }
+
+    try {
+      const payload = JSON.parse(body);
+      return { kind: "success", statusCode, payload };
+    } catch {
+      return { kind: "invalid_json", statusCode, payload: null };
+    }
+  } catch {
+    return { kind: "no_response", statusCode: 0, payload: null };
+  }
+}
+
+async function fetchJsonWithCurlFallback(url, timeoutMs, headers) {
+  const response = await fetchWithTimeout(url, timeoutMs, { headers });
+
+  if (!response) {
+    return { kind: "no_response", statusCode: 0, payload: null };
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    return { kind: "unauthorized", statusCode: response.status, payload: null };
+  }
+  if (response.status === 429) {
+    return { kind: "rate_limited", statusCode: response.status, payload: null };
+  }
+  if (!response.ok) {
+    return { kind: "http_error", statusCode: response.status, payload: null };
+  }
+
+  try {
+    const payload = await response.json();
+    return { kind: "success", statusCode: response.status, payload };
+  } catch {
+    return fetchJsonViaCurl(url, timeoutMs, headers);
+  }
 }
 
 async function runSourceQuery(sourceId, executor) {
@@ -106,12 +285,13 @@ async function runSourceQuery(sourceId, executor) {
       source: result.source,
       flags: Array.isArray(result.flags) ? result.flags : [],
     };
-  } catch {
+  } catch (error) {
+    const details = error instanceof Error ? error.message : String(error);
     return {
       source: buildSourceStatus(sourceId, "error", {
         latencyMs: Date.now() - start,
         statusReason: "unhandled_exception",
-        message: "Erro inesperado ao processar a fonte",
+        message: `Erro inesperado ao processar a fonte: ${details}`,
       }),
       flags: [],
     };
@@ -228,14 +408,14 @@ async function queryCGUByCnpj(sourceId, endpoint, cnpjParamName, cnpj) {
 
     const source = getSourceConfig(sourceId);
     const url = `https://api.portaldatransparencia.gov.br/api-de-dados/${endpoint}?${cnpjParamName}=${cnpj}&pagina=1`;
-    const response = await fetchWithTimeout(url, source.timeoutMs, {
-      headers: {
-        "chave-api-dados": PORTAL_TRANSPARENCIA_API_KEY,
-        accept: "application/json",
-      },
-    });
+    const headers = {
+      "chave-api-dados": PORTAL_TRANSPARENCIA_API_KEY,
+      accept: "application/json",
+    };
 
-    if (!response) {
+    const result = await fetchJsonWithCurlFallback(url, source.timeoutMs, headers);
+
+    if (result.kind === "no_response") {
       return {
         source: buildSourceStatus(sourceId, "unavailable", {
           latencyMs: Date.now() - start,
@@ -247,7 +427,7 @@ async function queryCGUByCnpj(sourceId, endpoint, cnpjParamName, cnpj) {
       };
     }
 
-    if (response.status === 401 || response.status === 403) {
+    if (result.kind === "unauthorized") {
       return {
         source: buildSourceStatus(sourceId, "unavailable", {
           latencyMs: Date.now() - start,
@@ -259,7 +439,7 @@ async function queryCGUByCnpj(sourceId, endpoint, cnpjParamName, cnpj) {
       };
     }
 
-    if (response.status === 429) {
+    if (result.kind === "rate_limited") {
       return {
         source: buildSourceStatus(sourceId, "error", {
           latencyMs: Date.now() - start,
@@ -271,11 +451,11 @@ async function queryCGUByCnpj(sourceId, endpoint, cnpjParamName, cnpj) {
       };
     }
 
-    if (!response.ok) {
+    if (result.kind === "http_error") {
       return {
         source: buildSourceStatus(sourceId, "error", {
           latencyMs: Date.now() - start,
-          statusReason: `http_${response.status}`,
+          statusReason: `http_${result.statusCode}`,
           message: "Falha ao consultar API da Transparência",
         }),
         flags: [],
@@ -283,13 +463,25 @@ async function queryCGUByCnpj(sourceId, endpoint, cnpjParamName, cnpj) {
       };
     }
 
-    const payload = await response.json();
-    const records = Array.isArray(payload) ? payload : [];
+    if (result.kind !== "success") {
+      return {
+        source: buildSourceStatus(sourceId, "error", {
+          latencyMs: Date.now() - start,
+          statusReason: "invalid_json_response",
+          message: "Resposta inválida da API da Transparência (não JSON)",
+        }),
+        flags: [],
+        data: null,
+      };
+    }
+
+    const allRecords = Array.isArray(result.payload) ? result.payload : [];
+    const records = allRecords.filter((record) => collectRecordDocuments(record).includes(cnpj));
 
     return {
       source: buildSourceStatus(sourceId, records.length > 0 ? "success" : "not_found", {
         latencyMs: Date.now() - start,
-        statusReason: records.length > 0 ? "match_found" : "not_listed",
+        statusReason: records.length > 0 ? "match_found" : "no_exact_document_match",
         evidenceCount: records.length,
       }),
       flags: [],
@@ -299,9 +491,10 @@ async function queryCGUByCnpj(sourceId, endpoint, cnpjParamName, cnpj) {
 }
 
 async function queryCEIS(cnpj) {
-  const result = await queryCGUByCnpj("cgu_ceis", "ceis", "cnpjSancionado", cnpj);
+  const result = await queryCGUByCnpj("cgu_ceis", "ceis", "codigoSancionado", cnpj);
 
   if (result.source.status !== "success") return result;
+  const sampleRecord = Array.isArray(result.data) ? result.data[0] : null;
 
   return {
     source: result.source,
@@ -314,15 +507,24 @@ async function queryCEIS(cnpj) {
         description:
           "Cadastrada no Cadastro de Empresas Inidôneas e Suspensas. Impedida de contratar com a administração pública.",
         weight: 35,
+        evidence: buildEvidenceItems(sampleRecord, [
+          { label: "Tipo de sanção", paths: ["tipoSancao.descricao", "tipoSancao"] },
+          { label: "Processo", paths: ["numeroProcesso"] },
+          { label: "Órgão sancionador", paths: ["orgaoSancionador.nome", "orgaoSancionador"] },
+          { label: "Início da sanção", paths: ["dataInicioSancao"] },
+          { label: "Fim da sanção", paths: ["dataFimSancao"] },
+          { label: "Link da publicação", paths: ["linkPublicacao"] },
+        ]),
       },
     ],
   };
 }
 
 async function queryCNEP(cnpj) {
-  const result = await queryCGUByCnpj("cgu_cnep", "cnep", "cnpjSancionado", cnpj);
+  const result = await queryCGUByCnpj("cgu_cnep", "cnep", "codigoSancionado", cnpj);
 
   if (result.source.status !== "success") return result;
+  const sampleRecord = Array.isArray(result.data) ? result.data[0] : null;
 
   return {
     source: result.source,
@@ -334,6 +536,13 @@ async function queryCNEP(cnpj) {
         title: "Empresa no CNEP",
         description: "Cadastrada no Cadastro Nacional de Empresas Punidas por atos contra a administração pública.",
         weight: 35,
+        evidence: buildEvidenceItems(sampleRecord, [
+          { label: "Tipo de penalidade", paths: ["tipoSancao.descricao", "tipoSancao", "penalidade"] },
+          { label: "Processo", paths: ["numeroProcesso", "processo"] },
+          { label: "Órgão", paths: ["orgaoSancionador.nome", "orgaoSancionador", "orgao"] },
+          { label: "Data de publicação", paths: ["dataPublicacaoSancao", "dataPublicacao"] },
+          { label: "Fundamentação", paths: ["fundamentacao"] },
+        ]),
       },
     ],
   };
@@ -343,6 +552,7 @@ async function queryCEPIM(cnpj) {
   const result = await queryCGUByCnpj("cgu_cepim", "cepim", "cnpjSancionado", cnpj);
 
   if (result.source.status !== "success") return result;
+  const sampleRecord = Array.isArray(result.data) ? result.data[0] : null;
 
   return {
     source: result.source,
@@ -354,6 +564,12 @@ async function queryCEPIM(cnpj) {
         title: "Entidade no CEPIM",
         description: "Cadastrada no CEPIM — impedida de receber transferências voluntárias.",
         weight: 25,
+        evidence: buildEvidenceItems(sampleRecord, [
+          { label: "Entidade", paths: ["entidade", "sancionado.nome", "pessoa.nome"] },
+          { label: "Órgão", paths: ["orgaoResponsavel.nome", "orgaoResponsavel", "orgaoSancionador"] },
+          { label: "Motivo", paths: ["motivo", "fundamentacao"] },
+          { label: "Data de referência", paths: ["dataReferencia", "dataPublicacaoSancao"] },
+        ]),
       },
     ],
   };
@@ -363,6 +579,7 @@ async function queryAcordosLeniencia(cnpj) {
   const result = await queryCGUByCnpj("cgu_acordos_leniencia", "acordos-leniencia", "cnpjSancionado", cnpj);
 
   if (result.source.status !== "success") return result;
+  const sampleRecord = Array.isArray(result.data) ? result.data[0] : null;
 
   return {
     source: result.source,
@@ -374,6 +591,13 @@ async function queryAcordosLeniencia(cnpj) {
         title: "Empresa com Acordo de Leniência registrado",
         description: "A empresa consta na base de acordos de leniência da CGU.",
         weight: 30,
+        evidence: buildEvidenceItems(sampleRecord, [
+          { label: "Situação do acordo", paths: ["situacaoAcordo"] },
+          { label: "Órgão responsável", paths: ["orgaoResponsavel.nome", "orgaoResponsavel"] },
+          { label: "Início", paths: ["dataInicioAcordo"] },
+          { label: "Fim", paths: ["dataFimAcordo"] },
+          { label: "Quantidade de sanções", paths: ["quantidade"] },
+        ]),
       },
     ],
   };
@@ -416,6 +640,10 @@ async function queryTCULicitantes(cnpj) {
           title: "Empresa em lista do TCU (Licitantes Inidôneos)",
           description: `Foram encontrados ${matches.count} registro(s) na base de licitantes inidôneos.${sample}`,
           weight: 35,
+          evidence: [
+            { label: "Registros encontrados", value: String(matches.count) },
+            ...(matches.sampleValues[0] ? [{ label: "Processo (exemplo)", value: matches.sampleValues[0] }] : []),
+          ],
         },
       ],
     };
@@ -459,6 +687,10 @@ async function queryMTETrabalhoEscravo(cnpj) {
           title: "Empresa no cadastro de trabalho escravo",
           description: `Foram encontradas ${matches.count} ocorrência(s) no cadastro de empregadores que submeteram trabalhadores a condições análogas à escravidão.${sampleEmployer}`,
           weight: 35,
+          evidence: [
+            { label: "Ocorrências", value: String(matches.count) },
+            ...(matches.sampleValues[0] ? [{ label: "Empregador (exemplo)", value: matches.sampleValues[0] }] : []),
+          ],
         },
       ],
     };
@@ -523,6 +755,10 @@ async function queryPGFNIndexed(sourceId, cnpj, options) {
             title: options.title,
             description: options.description,
             weight: options.weight,
+            evidence: [
+              { label: "Documento", value: cnpj },
+              { label: "Fonte indexada", value: sourceId },
+            ],
           },
         ],
       };
@@ -629,6 +865,10 @@ async function queryTCUEleitoral(partners) {
             title: "Sócio listado em contas irregulares com implicação eleitoral",
             description: `Foram encontrados ${matchedByCpf.length} sócio(s) na base do TCU por correspondência de CPF. Exemplos: ${partnerNames}.`,
             weight: 20,
+            evidence: [
+              { label: "Sócios com ocorrência", value: String(matchedByCpf.length) },
+              ...(partnerNames ? [{ label: "Sócios (exemplo)", value: partnerNames }] : []),
+            ],
           },
         ],
       };
@@ -681,6 +921,11 @@ async function queryTCUEleitoral(partners) {
           title: "Sócio possivelmente listado em contas irregulares com implicação eleitoral",
           description: `Foram encontrados ${uniqueMatchedNames.length} sócio(s) na base do TCU por correspondência de nome. Exemplos: ${partnerNames}. ${confidenceNote}`,
           weight: 10,
+          confidence_level: ambiguousMatches > 0 ? "POSSIVEL" : "PROVAVEL",
+          evidence: [
+            { label: "Sócios com correspondência por nome", value: String(uniqueMatchedNames.length) },
+            ...(partnerNames ? [{ label: "Sócios (exemplo)", value: partnerNames }] : []),
+          ],
         },
       ],
     };
@@ -726,25 +971,19 @@ async function queryCGUByCpf(sourceId, endpoint, queryParamName, cpf) {
   }
 
   const source = getSourceConfig(sourceId);
-  const response = await fetchWithTimeout(
-    `https://api.portaldatransparencia.gov.br/api-de-dados/${endpoint}?${queryParamName}=${cpf}&pagina=1`,
-    source.timeoutMs,
-    {
-      headers: {
-        "chave-api-dados": PORTAL_TRANSPARENCIA_API_KEY,
-        accept: "application/json",
-      },
-    },
-  );
+  const url = `https://api.portaldatransparencia.gov.br/api-de-dados/${endpoint}?${queryParamName}=${cpf}&pagina=1`;
+  const result = await fetchJsonWithCurlFallback(url, source.timeoutMs, {
+    "chave-api-dados": PORTAL_TRANSPARENCIA_API_KEY,
+    accept: "application/json",
+  });
 
-  if (!response) return { type: "unavailable", records: [] };
-  if (response.status === 401 || response.status === 403) return { type: "unavailable", records: [] };
-  if (!response.ok) return { type: "error", records: [] };
+  if (result.kind === "no_response") return { type: "unavailable", records: [] };
+  if (result.kind === "unauthorized") return { type: "unavailable", records: [] };
+  if (result.kind !== "success") return { type: "error", records: [] };
 
-  const payload = await response.json();
   return {
     type: "success",
-    records: Array.isArray(payload) ? payload : [],
+    records: Array.isArray(result.payload) ? result.payload : [],
   };
 }
 
@@ -800,6 +1039,13 @@ async function queryCGUCpfPartners({ sourceId, endpoint, queryParamName, partner
     const successResponses = perCpfResults.filter((entry) => entry.type === "success");
     const errorResponses = perCpfResults.filter((entry) => entry.type === "error");
     const matched = successResponses.filter((entry) => entry.records.length > 0);
+    const sampleRecords = matched.flatMap((entry) =>
+      entry.records.slice(0, 1).map((record) => ({
+        nome: entry.nome,
+        cpf: entry.cpf,
+        record,
+      })),
+    );
 
     if (matched.length > 0) {
       const partnerNames = Array.from(new Set(matched.map((entry) => entry.nome))).slice(0, 3);
@@ -814,6 +1060,7 @@ async function queryCGUCpfPartners({ sourceId, endpoint, queryParamName, partner
           partnerNames,
           checkedCount: scopedCpfs.length,
           maskedCount: cpfData.maskedCount,
+          sampleRecords,
         })],
       };
     }
@@ -860,12 +1107,13 @@ async function queryCEAF(partners) {
     endpoint: "ceaf",
     queryParamName: "cpfSancionado",
     partners,
-    flagFactory: ({ matchedCount, partnerNames, maskedCount }) => {
+    flagFactory: ({ matchedCount, partnerNames, maskedCount, sampleRecords }) => {
       const namesText = partnerNames.length > 0 ? ` Exemplos: ${partnerNames.join(", ")}.` : "";
       const maskedText =
         maskedCount > 0
           ? ` ${maskedCount} CPF(s) mascarado(s) na Receita/BrasilAPI não foram verificáveis.`
           : "";
+      const sampleRecord = sampleRecords[0]?.record ?? null;
 
       return {
         id: "cgu_ceaf_socio_expulso",
@@ -874,6 +1122,17 @@ async function queryCEAF(partners) {
         title: "Sócio listado no CEAF",
         description: `${matchedCount} sócio(s) constam no CEAF como expulsos da Administração Federal.${namesText}${maskedText}`,
         weight: 25,
+        evidence: [
+          { label: "Sócios com ocorrência", value: String(matchedCount) },
+          ...(sampleRecords[0]?.nome ? [{ label: "Sócio (exemplo)", value: sampleRecords[0].nome }] : []),
+          ...buildEvidenceItems(sampleRecord, [
+            { label: "Tipo de sanção", paths: ["tipoSancao.descricao", "tipoSancao"] },
+            { label: "Processo", paths: ["numeroProcesso", "processo"] },
+            { label: "Órgão", paths: ["orgaoSancionador.nome", "orgaoSancionador", "orgao"] },
+            { label: "Início", paths: ["dataInicioSancao", "dataInicio"] },
+            { label: "Fim", paths: ["dataFimSancao", "dataFim"] },
+          ]),
+        ].slice(0, 6),
       };
     },
   });
@@ -885,8 +1144,9 @@ async function queryServidoresFederais(partners) {
     endpoint: "servidores",
     queryParamName: "cpf",
     partners,
-    flagFactory: ({ matchedCount, partnerNames }) => {
+    flagFactory: ({ matchedCount, partnerNames, sampleRecords }) => {
       const namesText = partnerNames.length > 0 ? ` Exemplos: ${partnerNames.join(", ")}.` : "";
+      const sampleRecord = sampleRecords[0]?.record ?? null;
 
       return {
         id: "cgu_socio_servidor_federal",
@@ -895,9 +1155,468 @@ async function queryServidoresFederais(partners) {
         title: "Sócio identificado como servidor federal",
         description: `${matchedCount} sócio(s) identificados como servidor público federal ativo — possível conflito de interesse.${namesText}`,
         weight: 10,
+        evidence: [
+          { label: "Sócios com vínculo", value: String(matchedCount) },
+          ...(sampleRecords[0]?.nome ? [{ label: "Sócio (exemplo)", value: sampleRecords[0].nome }] : []),
+          ...buildEvidenceItems(sampleRecord, [
+            { label: "Órgão", paths: ["orgaoServidorLotacao.nome", "orgaoServidorLotacao"] },
+            { label: "Cargo", paths: ["funcao.nome", "cargo.nome", "funcao"] },
+            { label: "Situação", paths: ["situacaoVinculo", "situacao"] },
+          ]),
+        ].slice(0, 6),
       };
     },
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Agente 2 — Risco de sócios PJ (recursivo, depth=1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function analyzePartnerRisk(partnerCnpj) {
+  const cleanCnpj = cleanDocument(partnerCnpj);
+  if (cleanCnpj.length !== 14) return { risk_flags: [], risk_score: 0, risk_classification: "Baixo" };
+
+  try {
+    const [ceisResult, cnepResult, tcuResult, pgfnFgtsResult, pgfnPrevidResult, pgfnNpResult] =
+      await Promise.all([
+        queryCEIS(cleanCnpj),
+        queryCNEP(cleanCnpj),
+        queryTCULicitantes(cleanCnpj),
+        queryPGFNIndexed("pgfn_fgts", cleanCnpj, {
+          flagId: "pgfn_fgts_divida_ativa_parceiro",
+          severity: "medium",
+          weight: 15,
+          title: "Sócio PJ com inscrição em dívida ativa (FGTS)",
+          description: "Empresa parceira consta na dívida ativa FGTS.",
+        }),
+        queryPGFNIndexed("pgfn_previdenciario", cleanCnpj, {
+          flagId: "pgfn_previd_divida_ativa_parceiro",
+          severity: "medium",
+          weight: 15,
+          title: "Sócio PJ com dívida ativa previdenciária",
+          description: "Empresa parceira consta na dívida ativa previdenciária.",
+        }),
+        queryPGFNIndexed("pgfn_nao_previdenciario", cleanCnpj, {
+          flagId: "pgfn_np_divida_ativa_parceiro",
+          severity: "medium",
+          weight: 20,
+          title: "Sócio PJ com dívida ativa não-previdenciária",
+          description: "Empresa parceira consta na dívida ativa não-previdenciária.",
+        }),
+      ]);
+
+    const partnerFlags = [];
+    for (const result of [ceisResult, cnepResult, tcuResult, pgfnFgtsResult, pgfnPrevidResult, pgfnNpResult]) {
+      for (const flag of result.flags) {
+        partnerFlags.push({ ...flag, depth: 1 });
+      }
+    }
+
+    const { score: risk_score, classification: risk_classification } = calculateScore(partnerFlags);
+    return { risk_flags: partnerFlags, risk_score, risk_classification };
+  } catch {
+    return { risk_flags: [], risk_score: 0, risk_classification: "Baixo" };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DataJud — Processos Judiciais (CNJ)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function queryDatajud(cnpj, company) {
+  return runSourceQuery("datajud", async (start) => {
+    if (!isDatajudEnabled()) {
+      return {
+        source: buildSourceStatus("datajud", "unavailable", {
+          latencyMs: Date.now() - start,
+          statusReason: "feature_disabled",
+          message: "DataJud desabilitado (FEATURE_DATAJUD=false)",
+        }),
+        flags: [],
+      };
+    }
+
+    const uf = company?.uf ?? "";
+    const result = await queryProcessosByCnpj(cnpj, { uf });
+
+    if (result.status === "unavailable" || result.status === "invalid") {
+      const message = result.message
+        ? result.message
+        : (result.errorSummary && result.status === "unavailable")
+          ? `DataJud indisponível nos tribunais consultados (${result.errorSummary})`
+          : undefined;
+      return {
+        source: buildSourceStatus("datajud", "unavailable", {
+          latencyMs: Date.now() - start,
+          statusReason: result.statusReason ?? result.status,
+          message,
+        }),
+        flags: [],
+      };
+    }
+
+    const flags = [];
+    const { byType, total, tribunaisConsultados } = result;
+    const tribunaisComErro = (result.tribunalErrors ?? [])
+      .map((item) => `${item.tribunal} (${item.reason})`)
+      .slice(0, 6);
+
+    const evidenceBase = [
+      { label: "Tribunais consultados", value: (tribunaisConsultados ?? []).join(", ") },
+      { label: "Total de processos encontrados", value: String(total) },
+      ...(tribunaisComErro.length > 0
+        ? [{ label: "Tribunais com erro", value: tribunaisComErro.join("; ") }]
+        : []),
+    ];
+
+    /** Formata R$ e parte contrária para evidência de um processo */
+    function processoEvidence(p) {
+      const items = [];
+      if (p.numeroProcesso) items.push({ label: "Número", value: p.numeroProcesso });
+      if (p.ano) items.push({ label: "Ano", value: p.ano });
+      if (p.classe?.nome) items.push({ label: "Classe", value: p.classe.nome });
+      if (p.valor != null) {
+        const brl = Number(p.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+        items.push({ label: "Valor da causa", value: brl });
+      }
+      if (p.polo) items.push({ label: "Polo da empresa", value: p.polo === "ATIVO" ? "Autora" : "Ré" });
+      if (p.parteContraria?.length > 0) {
+        items.push({ label: "Parte contrária", value: p.parteContraria.join("; ") });
+      }
+      if (p.orgaoJulgador?.nome) items.push({ label: "Órgão julgador", value: p.orgaoJulgador.nome });
+      return items;
+    }
+
+    if (byType.criminal.length > 0) {
+      const sample = byType.criminal[0];
+      const totalValor = byType.criminal.reduce((s, p) => s + (Number(p.valor) || 0), 0);
+      flags.push({
+        id: "datajud_processos_criminais",
+        source_id: "datajud",
+        source: "DataJud (CNJ)",
+        severity: "critical",
+        title: `Empresa em ${byType.criminal.length} processo(s) criminal(is)`,
+        description:
+          `Foram encontrados ${byType.criminal.length} processo(s) de natureza criminal ou de improbidade ` +
+          `nos tribunais consultados via DataJud/CNJ.`,
+        weight: 35,
+        evidence: [
+          ...evidenceBase,
+          { label: "Processos criminais", value: String(byType.criminal.length) },
+          ...(totalValor > 0
+            ? [{ label: "Valor total (soma)", value: totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) }]
+            : []),
+          ...processoEvidence(sample),
+        ],
+      });
+    }
+
+    if (byType.fiscal.length > 0) {
+      const sample = byType.fiscal[0];
+      const totalValor = byType.fiscal.reduce((s, p) => s + (Number(p.valor) || 0), 0);
+      flags.push({
+        id: "datajud_execucoes_fiscais",
+        source_id: "datajud",
+        source: "DataJud (CNJ)",
+        severity: "high",
+        title: `Empresa em ${byType.fiscal.length} execução(ões) fiscal(is)`,
+        description:
+          `Foram encontrados ${byType.fiscal.length} processo(s) de execução fiscal ou cobrança de dívida ` +
+          `nos tribunais consultados via DataJud/CNJ.`,
+        weight: 20,
+        evidence: [
+          ...evidenceBase,
+          { label: "Execuções fiscais", value: String(byType.fiscal.length) },
+          ...(totalValor > 0
+            ? [{ label: "Valor total (soma)", value: totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) }]
+            : []),
+          ...processoEvidence(sample),
+        ],
+      });
+    }
+
+    if (byType.trabalhista.length > 0) {
+      const sample = byType.trabalhista[0];
+      const totalValor = byType.trabalhista.reduce((s, p) => s + (Number(p.valor) || 0), 0);
+      flags.push({
+        id: "datajud_processos_trabalhistas",
+        source_id: "datajud",
+        source: "DataJud (CNJ)",
+        severity: byType.trabalhista.length >= 5 ? "high" : "medium",
+        title: `Empresa em ${byType.trabalhista.length} processo(s) trabalhista(s)`,
+        description:
+          `Foram encontrados ${byType.trabalhista.length} processo(s) trabalhista(s) ` +
+          `nos tribunais consultados via DataJud/CNJ.`,
+        weight: byType.trabalhista.length >= 5 ? 15 : 8,
+        evidence: [
+          ...evidenceBase,
+          { label: "Processos trabalhistas", value: String(byType.trabalhista.length) },
+          ...(totalValor > 0
+            ? [{ label: "Valor total (soma)", value: totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) }]
+            : []),
+          ...processoEvidence(sample),
+        ],
+      });
+    }
+
+    if (total > 0 && flags.length === 0) {
+      const sample = result.processes[0];
+      flags.push({
+        id: "datajud_processos_civeis",
+        source_id: "datajud",
+        source: "DataJud (CNJ)",
+        severity: total >= 10 ? "medium" : "low",
+        title: `Empresa com ${total} processo(s) judicial(is)`,
+        description: `Foram encontrados ${total} processo(s) nos tribunais consultados via DataJud/CNJ.`,
+        weight: total >= 10 ? 10 : 5,
+        evidence: [
+          ...evidenceBase,
+          ...(sample ? processoEvidence(sample) : []),
+        ],
+      });
+    }
+
+    return {
+      source: buildSourceStatus("datajud", total > 0 ? "success" : "not_found", {
+        latencyMs: Date.now() - start,
+        statusReason: total > 0 ? "match_found" : (result.statusReason ?? "not_listed"),
+        evidenceCount: total,
+        message:
+          total === 0 && result.errorSummary
+            ? `Cobertura parcial no DataJud (${result.errorSummary})`
+            : undefined,
+      }),
+      flags,
+      // Processos estruturados — passados via spread para o retorno da API
+      processes: result.processes ?? [],
+    };
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Agente 3 melhorado — Sócios PF com CPF mascarado: busca por nome + desambiguação
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function queryPFByNameCGU(sourceId, endpoint, queryParamName, name) {
+  if (!PORTAL_TRANSPARENCIA_API_KEY) return [];
+  const source = getSourceConfig(sourceId);
+  try {
+    const response = await fetchWithTimeout(
+      `https://api.portaldatransparencia.gov.br/api-de-dados/${endpoint}?${queryParamName}=${encodeURIComponent(name)}&pagina=1`,
+      source.timeoutMs,
+      { headers: { "chave-api-dados": PORTAL_TRANSPARENCIA_API_KEY, accept: "application/json" } },
+    );
+    if (!response || !response.ok) return [];
+    const payload = await response.json();
+    return Array.isArray(payload) ? payload : [];
+  } catch {
+    return [];
+  }
+}
+
+async function queryPFByName(partnerProfile) {
+  const { nome } = partnerProfile;
+  if (!nome) return { matches: [] };
+
+  const [ceisRecords, cnepRecords, ceafRecords] = await Promise.all([
+    queryPFByNameCGU("cgu_ceis", "ceis", "nomeSancionado", nome).catch(() => []),
+    queryPFByNameCGU("cgu_cnep", "cnep", "nomeSancionado", nome).catch(() => []),
+    queryPFByNameCGU("cgu_ceaf", "ceaf", "nomeSancionado", nome).catch(() => []),
+  ]);
+
+  const rawMatches = [];
+
+  for (const record of ceisRecords) {
+    const result = {
+      nome: record.sancionado?.nome ?? record.pessoa?.nome ?? record.nome ?? "",
+      cpf: record.sancionado?.cpfCnpj ?? record.pessoa?.cpfCnpj ?? "",
+      uf: record.uf ?? "",
+    };
+    const disambig = calculateDisambiguationScore(partnerProfile, result);
+    if (disambig.level !== "DESCARTADO") {
+      rawMatches.push({ ...disambig, source: "CEIS", flag_title: "Sanção no CEIS", record });
+    }
+  }
+
+  for (const record of cnepRecords) {
+    const result = {
+      nome: record.sancionado?.nome ?? record.pessoa?.nome ?? record.nome ?? "",
+      cpf: record.sancionado?.cpfCnpj ?? record.pessoa?.cpfCnpj ?? "",
+      uf: record.uf ?? "",
+    };
+    const disambig = calculateDisambiguationScore(partnerProfile, result);
+    if (disambig.level !== "DESCARTADO") {
+      rawMatches.push({ ...disambig, source: "CNEP", flag_title: "Penalidade no CNEP", record });
+    }
+  }
+
+  for (const record of ceafRecords) {
+    const result = {
+      nome: record.nome ?? record.sancionado?.nome ?? "",
+      cpf: record.cpf ?? record.sancionado?.cpfCnpj ?? "",
+      uf: record.uf ?? "",
+    };
+    const disambig = calculateDisambiguationScore(partnerProfile, result);
+    if (disambig.level !== "DESCARTADO") {
+      rawMatches.push({ ...disambig, source: "CEAF", flag_title: "Expulsão no CEAF", record });
+    }
+  }
+
+  const withConvergence = applyConvergenceBonus(rawMatches);
+  return { matches: withConvergence };
+}
+
+async function queryPartnerCompaniesByCnpj(partners) {
+  const partnerEntries = partners
+    .filter((partner) => partner?.tipo === "PJ")
+    .map((partner) => ({
+      partnerName: String(partner?.nome ?? "").trim(),
+      cnpj: cleanDocument(partner?.cnpj_cpf_do_socio ?? ""),
+    }))
+    .filter((entry) => entry.cnpj.length === 14);
+
+  const deduped = [];
+  const seen = new Set();
+  for (const entry of partnerEntries) {
+    if (seen.has(entry.cnpj)) continue;
+    seen.add(entry.cnpj);
+    deduped.push(entry);
+  }
+
+  if (deduped.length === 0) {
+    return {
+      source: "BrasilAPI",
+      status: "not_found",
+      message: "Nenhum sócio PJ com CNPJ completo no QSA.",
+      items: [],
+    };
+  }
+
+  const lookupLimit = Number.parseInt(process.env.PARTNER_PJ_LOOKUP_LIMIT ?? "12", 10);
+  const scoped = deduped.slice(0, Math.max(1, lookupLimit));
+
+  const lookups = await mapWithConcurrency(scoped, 2, async (entry) => {
+    const [response, risk] = await Promise.all([
+      fetchWithTimeout(`https://brasilapi.com.br/api/cnpj/v1/${entry.cnpj}`, 12000),
+      analyzePartnerRisk(entry.cnpj),
+    ]);
+
+    if (!response || !response.ok) {
+      return { ...entry, status: "error", company: null, risk };
+    }
+
+    const payload = await response.json();
+    return { ...entry, status: "success", company: payload, risk };
+  });
+
+  const successItems = lookups
+    .filter((lookup) => lookup.status === "success" && lookup.company && typeof lookup.company === "object")
+    .map((lookup) => ({
+      partner_name: lookup.partnerName,
+      cnpj: lookup.cnpj,
+      razao_social: lookup.company.razao_social ?? "",
+      nome_fantasia: lookup.company.nome_fantasia ?? "",
+      situacao_cadastral: lookup.company.descricao_situacao_cadastral ?? "",
+      uf: lookup.company.uf ?? "",
+      municipio: lookup.company.municipio ?? "",
+      data_inicio_atividade: lookup.company.data_inicio_atividade ?? "",
+      cep: lookup.company.cep ?? "",
+      risk_flags: lookup.risk?.risk_flags ?? [],
+      risk_score: lookup.risk?.risk_score ?? 0,
+      risk_classification: lookup.risk?.risk_classification ?? "Baixo",
+    }));
+
+  const failedCount = lookups.length - successItems.length;
+  return {
+    source: "BrasilAPI",
+    status: successItems.length > 0 ? "success" : "unavailable",
+    message:
+      failedCount > 0
+        ? `${failedCount} consulta(s) de sócio PJ não retornaram dados no momento.`
+        : undefined,
+    items: successItems,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Agente 4 — Padrões de rede (spec Agent 7 simplificado)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function detectNetworkPatterns(company, partnerCompanies) {
+  const flags = [];
+
+  // EMPRESA_RECENTE: início de atividade < 1 ano
+  if (company.data_inicio_atividade) {
+    const startDate = new Date(company.data_inicio_atividade);
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    if (!Number.isNaN(startDate.getTime()) && startDate > oneYearAgo) {
+      flags.push({
+        id: "network_empresa_recente",
+        source: "Análise Estrutural",
+        severity: "medium",
+        title: "Empresa recente (menos de 1 ano)",
+        description: `A empresa tem menos de 1 ano de atividade (início: ${company.data_inicio_atividade}).`,
+        weight: 10,
+        depth: 0,
+        evidence: [{ label: "Início de atividade", value: company.data_inicio_atividade }],
+      });
+    }
+  }
+
+  // POSSIVEL_LARANJA: capital < R$1.000 + empresa recente + sócio único
+  const isRecent = flags.some((f) => f.id === "network_empresa_recente");
+  const capitalBaixo = (company.capital_social ?? 0) < 1000;
+  const socioUnico = Array.isArray(company.qsa) && company.qsa.length === 1;
+  if (capitalBaixo && isRecent && socioUnico) {
+    flags.push({
+      id: "network_possivel_laranja",
+      source: "Análise Estrutural",
+      severity: "high",
+      title: "Perfil de empresa de fachada (heurística)",
+      description:
+        "Capital social abaixo de R$1.000, empresa recente e sócio único — padrão consistente com empresa fictícia ou laranja.",
+      weight: 20,
+      depth: 0,
+      evidence: [
+        { label: "Capital Social", value: `R$ ${company.capital_social ?? 0}` },
+        { label: "Sócios", value: String(company.qsa?.length ?? 0) },
+      ],
+    });
+  }
+
+  // MESMO_ENDERECO_REDE: 2+ empresas parceiras com mesmo CEP
+  const items = partnerCompanies?.items ?? [];
+  if (items.length >= 2) {
+    const cepMap = new Map();
+    for (const item of items) {
+      const cep = (item.cep ?? "").replace(/\D/g, "");
+      if (!cep || cep.length !== 8) continue;
+      const group = cepMap.get(cep) ?? [];
+      group.push(item.razao_social || item.cnpj);
+      cepMap.set(cep, group);
+    }
+    for (const [cep, companies] of cepMap.entries()) {
+      if (companies.length >= 2) {
+        flags.push({
+          id: "network_mesmo_endereco_rede",
+          source: "Análise Estrutural",
+          severity: "medium",
+          title: "Múltiplos sócios PJ no mesmo endereço (CEP)",
+          description: `${companies.length} empresas parceiras concentradas no mesmo CEP ${cep}: ${companies.slice(0, 3).join(", ")}.`,
+          weight: 15,
+          depth: 0,
+          evidence: [
+            { label: "CEP comum", value: cep },
+            { label: "Empresas no CEP", value: companies.slice(0, 3).join(", ") },
+          ],
+        });
+      }
+    }
+  }
+
+  return flags;
 }
 
 function buildCompany(receitaData, cleanCnpj) {
@@ -1021,14 +1740,17 @@ export async function analyzeCnpj(cnpj) {
   sources.push(receitaResult.source);
 
   if (receitaData && receitaData.situacao_cadastral !== undefined && receitaData.situacao_cadastral !== 2) {
-    flags.push({
+    flags.push(withVerificationStatus({
       id: "receita_situacao",
       source: "Receita Federal",
       severity: "high",
       title: "Situação cadastral irregular",
       description: `Empresa com situação cadastral: ${receitaData.descricao_situacao_cadastral || "Irregular"}`,
       weight: 30,
-    });
+      evidence: [
+        { label: "Situação cadastral", value: receitaData.descricao_situacao_cadastral || "Irregular" },
+      ],
+    }));
   }
 
   const firstStageResults = [
@@ -1045,7 +1767,7 @@ export async function analyzeCnpj(cnpj) {
 
   for (const result of firstStageResults) {
     sources.push(result.source);
-    flags.push(...result.flags);
+    flags.push(...result.flags.map(withVerificationStatus));
   }
 
   if (!receitaData) {
@@ -1054,21 +1776,180 @@ export async function analyzeCnpj(cnpj) {
 
   const company = buildCompany(receitaData, cleanCnpj);
 
-  const [eleitoralResult, ceafResult, servidoresResult] = await Promise.all([
-    queryTCUEleitoral(company.qsa),
-    queryCEAF(company.qsa),
-    queryServidoresFederais(company.qsa),
-  ]);
+  // Identifica sócios PF com CPF mascarado para busca por nome (Agente 3 melhorado)
+  const pfPartners = company.qsa.filter((partner) => partner?.tipo === "PF");
+  const pfCpfFullCount = pfPartners.filter((partner) => cleanDocument(partner?.cnpj_cpf_do_socio ?? "").length === 11).length;
+  const pfCpfMaskedCount = pfPartners.length - pfCpfFullCount;
+
+  const maskedPfPartners = pfPartners
+    .filter((p) => cleanDocument(p.cnpj_cpf_do_socio ?? "").length !== 11 && p.nome)
+    .slice(0, 10) // Limita a 10 para evitar sobrecarga
+    .map((p) => ({
+      nome: normalizePersonName(p.nome),
+      cpf_masked: p.cnpj_cpf_do_socio,
+      uf: company.uf,
+      municipio: company.municipio,
+      partner_name: p.nome,
+    }));
+
+  // Agentes 2, 3 (completo e por nome), CEAF, Servidores e TCU Eleitoral — em paralelo
+  const [eleitoralResult, ceafResult, servidoresResult, partnerCompanies, pfNameResultsAll] =
+    await Promise.all([
+      queryTCUEleitoral(company.qsa),
+      queryCEAF(company.qsa),
+      queryServidoresFederais(company.qsa),
+      queryPartnerCompaniesByCnpj(company.qsa),
+      Promise.all(
+        maskedPfPartners.map((profile) =>
+          queryPFByName(profile).catch(() => ({ matches: [] })),
+        ),
+      ),
+    ]);
 
   for (const result of [eleitoralResult, ceafResult, servidoresResult]) {
     sources.push(result.source);
-    flags.push(...result.flags);
+    flags.push(...result.flags.map(withVerificationStatus));
   }
+
+  // Processa resultados de nome de sócios PF mascarados (Agente 3)
+  const pfPartnerResults = maskedPfPartners.map((profile, i) => ({
+    partner_name: profile.partner_name,
+    matches: pfNameResultsAll[i]?.matches ?? [],
+  }));
+
+  // Gera flags de confidence a partir dos matches por nome
+  for (const pfResult of pfPartnerResults) {
+    const validMatches = (pfResult.matches ?? []).filter(
+      (m) => m.level !== "DESCARTADO" && m.level !== "HOMONIMO_CERTO",
+    );
+    for (const match of validMatches) {
+      const severity =
+        match.level === "CONFIRMADO" ? "critical" : match.level === "PROVAVEL" ? "high" : "medium";
+      const weight =
+        match.level === "CONFIRMADO" ? 30 : match.level === "PROVAVEL" ? 21 : 9;
+      const safeName = normalizePersonName(pfResult.partner_name)
+        .replace(/\s+/g, "_")
+        .substring(0, 20);
+      flags.push(withVerificationStatus({
+        id: `pf_name_${match.source.toLowerCase()}_${safeName}`,
+        source: `${match.source} (busca por nome)`,
+        severity,
+        title: `Sócio possivelmente listado no ${match.source}`,
+        description: `${pfResult.partner_name} pode constar no ${match.source}. Validação por nome (CPF mascarado na Receita).`,
+        weight,
+        confidence: match.score,
+        confidence_level: match.level,
+        verification_status: match.level === "POSSIVEL" ? "possible" : "probable",
+        depth: 0,
+        evidence: [
+          { label: "Sócio investigado", value: pfResult.partner_name },
+          { label: "Nível de confiança", value: `${match.level} (score: ${(match.score ?? 0).toFixed(2)})` },
+          { label: "Fonte de busca", value: match.source },
+        ],
+      }));
+    }
+  }
+
+  // Agente 4 — Padrões de rede
+  const networkFlags = detectNetworkPatterns(company, partnerCompanies);
+  flags.push(...networkFlags.map(withVerificationStatus));
 
   const { score, classification } = calculateScore(flags);
   const summary = generateSummary(classification, flags, company.razao_social);
-
   const partial = sources.some((source) => source.status === "error" || source.status === "unavailable");
+
+  // GenAI só deve ser executado após a investigação profunda (crawler + enriquecimento).
+  let aiAnalysis = {
+    available: false,
+    reason: "Laudo GenAI pendente: aguardando conclusão da investigação profunda.",
+  };
+
+  let deepInvestigation = {
+    run_id: null,
+    status: "failed",
+    auto_started: false,
+  };
+  let judicialScan = {
+    run_id: null,
+    status: "failed",
+    consulted: 0,
+    supported: 0,
+    unavailable: 0,
+    found_processes: 0,
+  };
+  try {
+    const scheduled = await enqueueDeepInvestigation({
+      cnpj: cleanCnpj,
+      company,
+      flags,
+      sources,
+      sourcesVersion: SOURCES_VERSION,
+      snapshotAt: pgfnSnapshotAt,
+    });
+    if (scheduled) {
+      deepInvestigation = scheduled;
+      judicialScan = {
+        run_id: scheduled.run_id,
+        status: scheduled.status,
+        consulted: 0,
+        supported: 0,
+        unavailable: 0,
+        found_processes: 0,
+      };
+    }
+  } catch (error) {
+    console.error("[deep-investigation] schedule failed:", error instanceof Error ? error.message : error);
+  }
+
+  if (!deepInvestigation.run_id) {
+    aiAnalysis = await generateIntelligenceReport({
+      company,
+      flags,
+      sources,
+      score,
+      classification,
+      partnerCompanies,
+      pfPartnerResults,
+    }).catch((e) => {
+      console.error("[ai-synthesis] unexpected error:", e.message);
+      return { available: false, reason: "Erro interno na síntese IA" };
+    });
+  } else {
+    aiAnalysis = {
+      available: false,
+      reason: `Laudo GenAI pendente: investigação em andamento (run_id: ${deepInvestigation.run_id}).`,
+    };
+  }
+
+  sources.push(
+    buildSourceStatus(
+      "datajud",
+      deepInvestigation.run_id ? "running" : "unavailable",
+      {
+        latencyMs: 0,
+        evidenceCount: 0,
+        statusReason: deepInvestigation.run_id ? "deferred_to_crawler" : "not_scheduled",
+        message: deepInvestigation.run_id
+          ? `DataJud será executado apenas para enriquecer processos já encontrados no crawler (run_id: ${deepInvestigation.run_id})`
+          : "DataJud é executado apenas após processos encontrados no crawler",
+      },
+    ),
+  );
+
+  sources.push(
+    buildSourceStatus(
+      "judicial_crawler",
+      deepInvestigation.run_id ? "running" : "unavailable",
+      {
+        latencyMs: 0,
+        evidenceCount: 0,
+        statusReason: deepInvestigation.run_id ? "queued_async" : "not_scheduled",
+        message: deepInvestigation.run_id
+          ? `Varredura assíncrona iniciada (run_id: ${deepInvestigation.run_id})`
+          : "Varredura judicial não foi agendada",
+      },
+    ),
+  );
 
   return {
     company,
@@ -1082,6 +1963,29 @@ export async function analyzeCnpj(cnpj) {
       sources_version: SOURCES_VERSION,
       partial,
       snapshot_at: pgfnSnapshotAt,
+      deep_investigation: deepInvestigation,
+      judicial_scan: judicialScan,
+    },
+    ai_analysis: aiAnalysis,
+    judicial_processes: [],
+    related_entities: {
+      partner_companies: partnerCompanies,
+      graph: deepInvestigation.run_id
+        ? {
+            run_id: deepInvestigation.run_id,
+            status: deepInvestigation.status,
+          }
+        : undefined,
+      pf_reverse_lookup: {
+        status: deepInvestigation.run_id ? "running" : "unavailable",
+        checked_pf_partners: pfPartners.length,
+        cpf_full_count: pfCpfFullCount,
+        cpf_masked_count: Math.max(0, pfCpfMaskedCount),
+        methods: ["bigquery", "brasilio_socios_brasil"],
+        run_id: deepInvestigation.run_id ?? null,
+        message:
+          "Mapeamento PF->PJ é executado na investigação profunda (run assíncrona), com BigQuery quando configurado e fallback por nome+CPF mascarado na base socios-brasil (Brasil.io).",
+      },
     },
   };
 }

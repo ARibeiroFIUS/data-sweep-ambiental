@@ -157,16 +157,27 @@ export async function upsertSourceIndexBatch(sourceId, snapshotRef, records) {
   const activePool = getPool();
   if (!activePool || !Array.isArray(records) || records.length === 0) return;
 
-  const values = [];
-  const placeholders = [];
-  let paramIndex = 1;
-
+  /** @type {Map<string, { cnpj: string, payload: Record<string, unknown> }>} */
+  const dedupedByCnpj = new Map();
   for (const entry of records) {
     const cnpj = cleanDocument(entry?.cnpj ?? "");
     if (cnpj.length !== 14) continue;
 
+    dedupedByCnpj.set(cnpj, {
+      cnpj,
+      payload: entry?.payload ?? {},
+    });
+  }
+
+  if (dedupedByCnpj.size === 0) return;
+
+  const values = [];
+  const placeholders = [];
+  let paramIndex = 1;
+
+  for (const entry of dedupedByCnpj.values()) {
     placeholders.push(`($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}::jsonb, $${paramIndex + 3})`);
-    values.push(sourceId, cnpj, JSON.stringify(entry.payload ?? {}), snapshotRef);
+    values.push(sourceId, entry.cnpj, JSON.stringify(entry.payload ?? {}), snapshotRef);
     paramIndex += 4;
   }
 
@@ -193,6 +204,86 @@ export async function cleanupSourceIndexToSnapshot(sourceId, snapshotRef) {
         AND snapshot_ref <> $2`,
     [sourceId, snapshotRef],
   );
+}
+
+/**
+ * Recupera jobs travados (status='running') que ficaram presos após crash/restart.
+ * Deve ser chamado no startup do servidor.
+ * @param {number} maxAgeMs - Jobs mais velhos que isso serão marcados como 'failed'. Padrão: 4h.
+ * @returns {Promise<number>} Quantidade de rows recuperadas.
+ */
+export async function recoverStaleJobRuns(maxAgeMs = 4 * 60 * 60 * 1000) {
+  const activePool = getPool();
+  if (!activePool) return 0;
+
+  try {
+    const { rowCount } = await activePool.query(
+      `UPDATE source_job_runs
+          SET status = 'failed',
+              finished_at = NOW(),
+              error_text = 'Recovered on startup — job was stuck in running state'
+        WHERE status = 'running'
+          AND started_at < NOW() - ($1 || ' milliseconds')::interval`,
+      [maxAgeMs],
+    );
+    return rowCount ?? 0;
+  } catch (error) {
+    if (isMissingSchemaError(error)) return 0;
+    console.error("[source-index-store] recoverStaleJobRuns error:", error.message);
+    return 0;
+  }
+}
+
+/**
+ * Retorna status das últimas execuções + snapshot mais recente de cada source_id.
+ * @param {string[]} sourceIds
+ * @returns {Promise<Array<{id, last_run, snapshot_ref, indexed_count}>>}
+ */
+export async function getPgfnSourceStatus(sourceIds) {
+  const activePool = getPool();
+  if (!activePool) return [];
+
+  try {
+    const results = await Promise.all(
+      sourceIds.map(async (sourceId) => {
+        const [runRows, snapshotRows, countRows] = await Promise.all([
+          activePool.query(
+            `SELECT id, status, started_at, finished_at, rows_read, rows_indexed, error_text
+               FROM source_job_runs
+              WHERE source_id = $1
+              ORDER BY started_at DESC
+              LIMIT 3`,
+            [sourceId],
+          ),
+          activePool.query(
+            `SELECT snapshot_ref, fetched_at, row_count
+               FROM source_snapshots
+              WHERE source_id = $1 AND status = 'success'
+              ORDER BY fetched_at DESC
+              LIMIT 1`,
+            [sourceId],
+          ),
+          activePool.query(
+            `SELECT COUNT(*) AS cnt
+               FROM source_index_cnpj
+              WHERE source_id = $1`,
+            [sourceId],
+          ),
+        ]);
+
+        return {
+          id: sourceId,
+          last_runs: runRows.rows,
+          latest_snapshot: snapshotRows.rows[0] ?? null,
+          indexed_count: parseInt(countRows.rows[0]?.cnt ?? "0", 10),
+        };
+      }),
+    );
+    return results;
+  } catch (error) {
+    if (isMissingSchemaError(error)) return [];
+    throw error;
+  }
 }
 
 export async function closeSourceIndexStore() {

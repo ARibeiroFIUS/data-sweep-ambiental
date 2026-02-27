@@ -94,6 +94,20 @@ export const SOURCE_REGISTRY = {
     ttlMs: 0,
     featureFlag: "FEATURE_PGFN_NAO_PREVIDENCIARIO",
   },
+  datajud: {
+    id: "datajud",
+    name: "DataJud — Processos Judiciais (CNJ)",
+    timeoutMs: 8000,
+    ttlMs: 0,
+    featureFlag: "FEATURE_DATAJUD",
+  },
+  judicial_crawler: {
+    id: "judicial_crawler",
+    name: "Crawler Judicial Nacional (Tribunais)",
+    timeoutMs: 0,
+    ttlMs: 0,
+    featureFlag: "FEATURE_JUDICIAL_CRAWLER",
+  },
 };
 
 export const PGFN_SOURCE_IDS = [

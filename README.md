@@ -77,3 +77,15 @@ Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/c
 Operational backend instructions (Postgres, PGFN sync job, cron e variáveis) estão em:
 
 - `RAILWAY_RUNBOOK.md`
+
+## Investigação profunda (PJ -> PF -> PJ)
+
+- A API `POST /api/analyze-cnpj` agora dispara automaticamente uma investigação profunda em background
+  e retorna `meta.deep_investigation.run_id`.
+- Endpoints de acompanhamento:
+  - `GET /api/investigations/:run_id`
+  - `GET /api/investigations/:run_id/graph`
+  - `GET /api/investigations/:run_id/events?cursor=0`
+  - `GET /api/investigations/:run_id/judicial/coverage`
+  - `GET /api/investigations/:run_id/judicial/processes`
+  - `GET /api/investigations/:run_id/judicial/summary`
