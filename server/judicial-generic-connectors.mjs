@@ -27,6 +27,9 @@ const DEFAULT_HEADERS = {
   "User-Agent": "Mozilla/5.0 (compatible; data-sweep-engine/1.0; +https://railway.app)",
   accept: "text/html,application/xhtml+xml",
 };
+const DEFAULT_FETCH_RETRIES = Number.parseInt(process.env.JUDICIAL_CONNECTOR_FETCH_RETRIES ?? "2", 10);
+const DEFAULT_RETRY_DELAY_MS = Number.parseInt(process.env.JUDICIAL_CONNECTOR_RETRY_DELAY_MS ?? "400", 10);
+const DEFAULT_RETRY_JITTER_MS = Number.parseInt(process.env.JUDICIAL_CONNECTOR_RETRY_JITTER_MS ?? "250", 10);
 
 function createHttpSession() {
   return { cookies: new Map() };
@@ -81,6 +84,26 @@ function decodeHtml(value) {
     .replace(/&gt;/gi, ">")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+}
+
+function isRetriableHttpStatus(status) {
+  const code = Number(status);
+  if (!Number.isFinite(code)) return false;
+  if (code === 408 || code === 425 || code === 429) return true;
+  if (code >= 500 && code <= 504) return true;
+  if (code === 522 || code === 524) return true;
+  return false;
+}
+
+function computeRetryDelayMs(attempt) {
+  const safeAttempt = Math.max(0, Number(attempt) || 0);
+  const base = Math.max(50, DEFAULT_RETRY_DELAY_MS) * (2 ** safeAttempt);
+  const jitter = Math.floor(Math.random() * Math.max(1, DEFAULT_RETRY_JITTER_MS));
+  return Math.min(base + jitter, 5000);
 }
 
 function stripTags(value) {
@@ -335,23 +358,50 @@ async function fetchHtmlWithSession(url, timeoutMs, session, refererUrl = "") {
     }
   }
 
-  const response = await fetchWithTimeout(url, timeoutMs, {
-    headers,
-    redirect: "follow",
-  });
-  if (!response) return { ok: false, status: 0, reason: "timeout_or_network", url, html: "" };
+  for (let attempt = 0; attempt <= DEFAULT_FETCH_RETRIES; attempt += 1) {
+    const response = await fetchWithTimeout(url, timeoutMs, {
+      headers,
+      redirect: "follow",
+    });
+    if (!response) {
+      if (attempt < DEFAULT_FETCH_RETRIES) {
+        await sleep(computeRetryDelayMs(attempt));
+        continue;
+      }
+      return { ok: false, status: 0, reason: "timeout_or_network", url, html: "" };
+    }
 
-  storeResponseCookies(session, response);
+    storeResponseCookies(session, response);
+    if (!response.ok) {
+      const statusCode = Number(response.status) || 0;
+      const reason =
+        statusCode === 401 || statusCode === 403
+          ? "access_blocked"
+          : `http_${statusCode}`;
+      if (attempt < DEFAULT_FETCH_RETRIES && isRetriableHttpStatus(statusCode)) {
+        await sleep(computeRetryDelayMs(attempt));
+        continue;
+      }
+      return {
+        ok: false,
+        status: statusCode,
+        reason,
+        url: response.url ?? url,
+        html: "",
+      };
+    }
 
-  if (!response.ok) return { ok: false, status: response.status, reason: `http_${response.status}`, url: response.url ?? url, html: "" };
-  const html = await response.text().catch(() => "");
-  return {
-    ok: true,
-    status: response.status,
-    reason: "ok",
-    url: response.url ?? url,
-    html,
-  };
+    const html = await response.text().catch(() => "");
+    return {
+      ok: true,
+      status: response.status,
+      reason: "ok",
+      url: response.url ?? url,
+      html,
+    };
+  }
+
+  return { ok: false, status: 0, reason: "timeout_or_network", url, html: "" };
 }
 
 async function submitForm({ form, timeoutMs, queryMode, queryValue, session, refererUrl, fieldOverrides = {} }) {
@@ -386,17 +436,52 @@ async function submitForm({ form, timeoutMs, queryMode, queryValue, session, ref
     }
   }
 
-  const response = await fetchWithTimeout(requestUrl, timeoutMs, {
-    method,
-    headers,
-    body,
-    redirect: "follow",
-  });
-  if (!response) return { ok: false, reason: "timeout_or_network", html: "", status: 0, url: requestUrl };
-  storeResponseCookies(session, response);
-  if (!response.ok) return { ok: false, reason: `http_${response.status}`, html: "", status: response.status, url: response.url ?? requestUrl };
-  const html = await response.text().catch(() => "");
-  return { ok: true, reason: "ok", html, status: response.status, url: response.url ?? requestUrl };
+  for (let attempt = 0; attempt <= DEFAULT_FETCH_RETRIES; attempt += 1) {
+    const response = await fetchWithTimeout(requestUrl, timeoutMs, {
+      method,
+      headers,
+      body,
+      redirect: "follow",
+    });
+    if (!response) {
+      if (attempt < DEFAULT_FETCH_RETRIES) {
+        await sleep(computeRetryDelayMs(attempt));
+        continue;
+      }
+      return { ok: false, reason: "timeout_or_network", html: "", status: 0, url: requestUrl };
+    }
+
+    storeResponseCookies(session, response);
+    if (!response.ok) {
+      const statusCode = Number(response.status) || 0;
+      const reason =
+        statusCode === 401 || statusCode === 403
+          ? "access_blocked"
+          : `http_${statusCode}`;
+      if (attempt < DEFAULT_FETCH_RETRIES && isRetriableHttpStatus(statusCode)) {
+        await sleep(computeRetryDelayMs(attempt));
+        continue;
+      }
+      return {
+        ok: false,
+        reason,
+        html: "",
+        status: statusCode,
+        url: response.url ?? requestUrl,
+      };
+    }
+
+    const html = await response.text().catch(() => "");
+    return {
+      ok: true,
+      reason: "ok",
+      html,
+      status: response.status,
+      url: response.url ?? requestUrl,
+    };
+  }
+
+  return { ok: false, reason: "timeout_or_network", html: "", status: 0, url: requestUrl };
 }
 
 function buildPjeCandidates(tribunalId) {
@@ -562,6 +647,10 @@ export async function runGenericTribunalConnector({
 }) {
   const startedAt = Date.now();
   const tribunalId = String(tribunal?.tribunal_id ?? "").toLowerCase();
+  const effectiveTimeoutMs =
+    connectorFamily === "pje" || connectorFamily === "eproc"
+      ? Math.max(timeoutMs, 16000)
+      : timeoutMs;
   const valid = validateQueryInput(queryMode, document, name, processNumber);
   if (!valid.ok) {
     return {
@@ -612,7 +701,7 @@ export async function runGenericTribunalConnector({
     visited.add(candidate);
 
     const session = createHttpSession();
-    const page = await fetchHtmlWithSession(candidate, timeoutMs, session);
+    const page = await fetchHtmlWithSession(candidate, effectiveTimeoutMs, session);
     if (!page.ok) {
       lastUnavailableReason = page.reason;
       continue;
@@ -701,7 +790,7 @@ export async function runGenericTribunalConnector({
         triedSubmission = true;
         const submit = await submitForm({
           form,
-          timeoutMs,
+          timeoutMs: effectiveTimeoutMs,
           queryMode,
           queryValue: valid.value,
           session,
