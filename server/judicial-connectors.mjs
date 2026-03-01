@@ -1,6 +1,7 @@
 import { cleanDocument, parseBooleanEnv, normalizePersonName } from "./common-utils.mjs";
 import { fetchWithTimeout } from "./http-utils.mjs";
 import { queryDatajudTribunal } from "./datajud-query.mjs";
+import { runGenericTribunalConnector } from "./judicial-generic-connectors.mjs";
 
 const CONNECTOR_FEATURE_FLAGS = {
   datajud: "FEATURE_JUDICIAL_DATAJUD",
@@ -776,6 +777,22 @@ async function runFamilyConnector({ connectorFamily, tribunal, tribunalId, query
     return runEsajConnector({ tribunal, queryMode, document, name, timeoutMs });
   }
 
+  if (
+    connectorFamily === "pje" ||
+    connectorFamily === "eproc" ||
+    connectorFamily === "projudi" ||
+    connectorFamily === "custom"
+  ) {
+    return runGenericTribunalConnector({
+      connectorFamily,
+      tribunal,
+      queryMode,
+      document,
+      name,
+      timeoutMs,
+    });
+  }
+
   return runPlaceholderConnector({ connectorFamily, queryMode });
 }
 
@@ -811,7 +828,9 @@ export async function runJudicialConnectorQuery(input) {
   const families = [primaryFamily, ...fallbackFamilies.filter((family) => family !== primaryFamily)];
 
   const attempts = [];
-  for (const family of families) {
+  for (let index = 0; index < families.length; index += 1) {
+    const family = families[index];
+    const nextFamily = families[index + 1] ?? null;
     const result = await runFamilyConnector({
       connectorFamily: family,
       tribunal,
@@ -833,6 +852,17 @@ export async function runJudicialConnectorQuery(input) {
 
     const terminal = result.status === "success" || result.status === "not_found";
     if (terminal) {
+      return {
+        ...result,
+        attempts,
+      };
+    }
+
+    const blockEntityFallbackToDatajud =
+      (queryMode === "cnpj_exact" || queryMode === "party_name") &&
+      family !== "datajud" &&
+      nextFamily === "datajud";
+    if (blockEntityFallbackToDatajud) {
       return {
         ...result,
         attempts,
