@@ -1,130 +1,106 @@
 # Tribunais NÃO Funcionais Ainda (Não Eleitorais)
 
 ## Escopo
-Relatório técnico para handoff de desenvolvimento dos tribunais que **ainda não funcionam** no crawler judicial por entidade (CNPJ), **excluindo tribunais eleitorais**.
+Relatório técnico para handoff de desenvolvimento dos tribunais que **ainda não funcionam** no crawler judicial por entidade (CNPJ/nome), **excluindo eleitorais**.
 
-## Snapshot de referência
-- Data/hora início (UTC): `2026-03-01T17:18:27.487Z`
-- Data/hora fim (UTC): `2026-03-01T17:22:21.859Z`
-- Query de teste: `cnpj_exact`
-- Documento usado no teste: `17140820000181` (BYD do Brasil Ltda)
-- Timeout por tribunal: `10000ms`
-- Total de tribunais não eleitorais testados: `61`
-- Resultado agregado:
-  - `success`: 9
-  - `not_found`: 30
-  - `unavailable`: 22
+## Snapshot utilizado
+- Data: **2026-03-01**
+- Execução de referência: `run_id=403eda3d-95de-4315-9af0-ad0f9db71e3d`
+- Empresa de teste: **BYD DO BRASIL LTDA** (`17.140.820/0001-81`)
+- Search ID: `33491624-f450-4fee-89e0-576579b45939`
+- Deploy validado: `287a0495-81d3-4a2f-a598-2e99f327aee8` (Railway production)
+- Observação: snapshot coletado com investigação ainda em execução (`consulted=88/89` no momento da captura), mas já consolidado para os tribunais listados abaixo.
 
-## Resumo dos que NÃO funcionam
-Total: **22 tribunais**
+## Resumo (não eleitorais)
+- Itens de cobertura considerados: **109**
+- `success`: **12**
+- `not_found`: **42**
+- `unavailable`: **55**
+- Tribunais únicos não funcionais: **29**
 
-Quebra por motivo técnico (`statusReason`):
-- `timeout_or_network`: 14
+### Motivos de indisponibilidade (não eleitorais)
+- `timeout_or_network`: 43
+- `access_blocked`: 6
 - `no_automatable_form`: 4
-- `http_404`: 1
-- `access_blocked`: 1
-- `http_403`: 1
-- `public_query_disabled`: 1
+- `public_query_disabled`: 2
 
-## Lista completa dos não funcionais
-| tribunal_id | Tribunal | Família | URL base usada | statusReason | Sintoma observado | Hipótese técnica principal | Ação recomendada para dev |
-|---|---|---|---|---|---|---|---|
-| `stf` | Supremo Tribunal Federal | `custom` | `https://portal.stf.jus.br/processos/consultaProcessual.asp` | `timeout_or_network` | Nenhum endpoint público respondeu de forma consultável | Portal sem resposta útil no timeout atual/fluxo não compatível com parser atual | Implementar conector `custom/stf` com fluxo específico da página de consulta do STF + retries e timeout maior |
-| `tjal` | Tribunal de Justiça de Alagoas | `esaj` | `https://esaj.tjal.jus.br/cpopg/open.do` | `timeout_or_network` | Nenhum endpoint público respondeu de forma consultável | Timeout/rede ou intermitência no host ESAJ | Aumentar timeout/retries no ESAJ deste tribunal + validação com Playwright headed |
-| `tjam` | Tribunal de Justiça do Amazonas | `esaj` | `https://esaj.tjam.jus.br/cpopg/open.do` | `http_404` | Nenhum endpoint público respondeu de forma consultável | URL de consulta pública provavelmente alterada | Redescobrir URL ativa (open/search) e atualizar `base_url` no catálogo |
-| `tjdft` | Tribunal de Justiça do Distrito Federal e Territórios | `pje` | `https://pje.tjdft.jus.br/pje/ConsultaPublica/listView.seam` | `timeout_or_network` | Nenhum endpoint público respondeu de forma consultável | Endpoint oficial inacessível no timeout atual/rota alternativa | Validar hosts alternativos PJe TJDFT e ajustar lista de candidatos |
-| `tjes` | Tribunal de Justiça do Espírito Santo | `pje` | `https://sistemas.tjes.jus.br/pje/ConsultaPublica/listView.seam` | `timeout_or_network` | Nenhum endpoint público respondeu de forma consultável | Instabilidade de rede/portal; possível rota alternativa | Captura Playwright + HAR para descobrir endpoint que responde no ambiente de execução |
-| `tjgo` | Tribunal de Justiça de Goiás | `pje` | `https://pje.tjgo.jus.br/pje/ConsultaPublica/listView.seam` | `timeout_or_network` | Nenhum endpoint público respondeu de forma consultável | Timeout/intermitência do PJe | Ajustar política de tentativas e timeout; validar bloqueio de IP no ambiente de produção |
-| `tjms` | Tribunal de Justiça do Mato Grosso do Sul | `eproc` | `https://eproc.tjms.jus.br/eprocV2/externo_controlador.php?acao=processo_consulta_publica` | `timeout_or_network` | Nenhum endpoint público respondeu de forma consultável | Endpoint eproc indisponível no momento/rota protegida | Criar fallback de rota eproc + Playwright para coleta dos campos ativos |
-| `tjmt` | Tribunal de Justiça do Mato Grosso | `pje` | `https://pje.tjmt.jus.br/pje/ConsultaPublica/listView.seam` | `no_automatable_form` | Página pública alcançada, porém sem formulário de busca automatizável | Página depende de renderização JS/iframe/fluxo que parser HTML não resolve | Criar conector browser-first (Playwright) para preencher/submeter o form |
-| `tjpa` | Tribunal de Justiça do Pará | `pje` | `https://pje.tjpa.jus.br/pje/ConsultaPublica/listView.seam` | `no_automatable_form` | Página pública alcançada, porém sem formulário de busca automatizável | Mesmo padrão de tela sem form parseável estático | Implementar fluxo Playwright específico para este PJe |
-| `tjpb` | Tribunal de Justiça da Paraíba | `pje` | `https://pje.tjpb.jus.br/pje/ConsultaPublica/listView.seam` | `timeout_or_network` | Nenhum endpoint público respondeu de forma consultável | Timeout/rede ou porta/host alternativo | Verificar host alternativo de consulta pública e aumentar timeout de primeira carga |
-| `tjpe` | Tribunal de Justiça de Pernambuco | `pje` | `https://pje.tjpe.jus.br/1g/ConsultaPublica/listView.seam` | `no_automatable_form` | Página pública alcançada, porém sem formulário de busca automatizável | Estrutura dinâmica de tela não atendida pelo parser atual | Conector Playwright com seleção de campos por label/placeholder |
-| `tjpi` | Tribunal de Justiça do Piauí | `pje` | `https://tjpi.pje.jus.br/pje/ConsultaPublica/listView.seam` | `no_automatable_form` | Página pública alcançada, porém sem formulário de busca automatizável | Tela dinâmica/DOM pós-JS | Implementar captura JS render + submit via browser |
-| `tjrn` | Tribunal de Justiça do Rio Grande do Norte | `pje` | `https://pje.tjrn.jus.br/pje1grau/ConsultaPublica/listView.seam` | `timeout_or_network` | Nenhum endpoint público respondeu de forma consultável | Timeout/rede/intermitência | Testar rotas variantes (`/pje/`, `/primeirograu/`) e reforçar retries |
-| `tjro` | Tribunal de Justiça de Rondônia | `pje` | `https://pje.tjro.jus.br/pg/ConsultaPublica/listView.seam` | `access_blocked` | Portal bloqueou o acesso da automação para consulta pública | WAF/anti-bot/controle por IP ou User-Agent | Necessário bypass legítimo: whitelisting de IP, user-agent corporativo, ou sessão autenticada permitida |
-| `tjrr` | Tribunal de Justiça de Roraima | `pje` | `https://pje.tjrr.jus.br/pje/ConsultaPublica/listView.seam` | `timeout_or_network` | Nenhum endpoint público respondeu de forma consultável | Timeout/rede | Revalidar disponibilidade com browser real e ajustar timeout/retries |
-| `tjrs` | Tribunal de Justiça do Rio Grande do Sul | `eproc` | `https://eproc1g.tjrs.jus.br/eproc/externo_controlador.php?acao=processo_consulta_publica` | `http_403` | Nenhum endpoint público respondeu de forma consultável | Bloqueio explícito HTTP 403 | Tratar como bloqueio de origem; avaliar IP dedicado/proxy corporativo e negociação de acesso |
-| `tjse` | Tribunal de Justiça de Sergipe | `pje` | `https://pje.tjse.jus.br/pje/ConsultaPublica/listView.seam` | `timeout_or_network` | Nenhum endpoint público respondeu de forma consultável | Instabilidade/rede | Aumentar timeout e testar host alternativo da consulta pública |
-| `tjto` | Tribunal de Justiça do Tocantins | `eproc` | `https://eproc1g.tjto.jus.br/eprocV2_prod_1grau/externo_controlador.php?acao=processo_consulta_publica` | `timeout_or_network` | Nenhum endpoint público respondeu de forma consultável | Endpoint eproc sem resposta útil no timeout | Captura Playwright para confirmar necessidade de sessão/challenge antes da busca |
-| `trf3` | TRF 3ª Região | `pje` | `https://web.trf3.jus.br/consultas/Internet/ConsultaProcessual` | `timeout_or_network` | Nenhum endpoint público respondeu de forma consultável | URL pode não ser endpoint direto de submit para entidade | Criar perfil `custom/trf3` com rota/form exatos por nome/CNPJ |
-| `trf4` | TRF 4ª Região | `eproc` | `https://eproc.trf4.jus.br/eproc2trf4/externo_controlador.php?acao=processo_consulta_publica` | `public_query_disabled` | Portal informa que a consulta pública está desativada | Restrição oficial do próprio portal | Não há correção de crawler; manter status indisponível e orientar usuário para canais alternativos |
-| `trf6` | TRF 6ª Região | `pje` | `https://pje.trf6.jus.br/pje/ConsultaPublica/listView.seam` | `timeout_or_network` | Nenhum endpoint público respondeu de forma consultável | Timeout/rede/instabilidade | Aumentar timeout e validar candidatos alternativos de host/caminho |
-| `trt17` | TRT 17ª Região | `pje` | `https://pje.trtes.jus.br/primeirograu/ConsultaPublica/listView.seam` | `timeout_or_network` | Nenhum endpoint público respondeu de forma consultável | Endpoint intermitente ou bloqueio de origem | Implementar fallback de hosts TRT17 + telemetria de disponibilidade |
+## Lista completa dos não funcionais (não eleitorais)
+| tribunal_id | Tribunal | Família | Querys indisponíveis | Sintoma atual | Ação recomendada para dev |
+|---|---|---|---|---|---|
+| `stf` | Supremo Tribunal Federal | `custom` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `stj` | Superior Tribunal de Justiça | `custom` | cnpj_exact:access_blocked<br>party_name:access_blocked | Nenhum endpoint público respondeu de forma consultável | Bloqueio/WAF: exigir IP fixo + allowlist + UA corporativo + telemetria de bloqueio |
+| `tjal` | Tribunal de Justiça de Alagoas | `esaj` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | CPoPG: CPOPG indisponível (timeout_or_network); CPoSG: CPOSG indisponível (timeout_or_network) | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `tjap` | Tribunal de Justiça do Amapá | `pje` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `tjes` | Tribunal de Justiça do Espírito Santo | `pje` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `tjgo` | Tribunal de Justiça de Goiás | `pje` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `tjms` | Tribunal de Justiça do Mato Grosso do Sul | `eproc` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `tjmt` | Tribunal de Justiça do Mato Grosso | `pje` | cnpj_exact:no_automatable_form<br>party_name:no_automatable_form | Página pública alcançada, porém sem formulário de busca automatizável; browser-first: Fallback browser não encontrou campo editável para a consulta | Browser-profile: mapear seletores reais por tribunal (Playwright capture) e conector dedicado |
+| `tjpa` | Tribunal de Justiça do Pará | `pje` | cnpj_exact:no_automatable_form<br>party_name:no_automatable_form | Página pública alcançada, porém sem formulário de busca automatizável; browser-first: Fallback browser falhou: page.goto: Page crashed | Browser-profile: mapear seletores reais por tribunal (Playwright capture) e conector dedicado |
+| `tjpb` | Tribunal de Justiça da Paraíba | `pje` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `tjpi` | Tribunal de Justiça do Piauí | `pje` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável; browser-first: Fallback browser falhou: page.goto: net::ERR_NAME_NOT_RESOLVED at https://tjpi.pje.jus.br/pje/ConsultaPublica/listView.seam | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `tjrn` | Tribunal de Justiça do Rio Grande do Norte | `pje` | cnpj_exact:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `tjro` | Tribunal de Justiça de Rondônia | `pje` | cnpj_exact:access_blocked<br>party_name:access_blocked | Portal bloqueou o acesso da automação para consulta pública | Bloqueio/WAF: exigir IP fixo + allowlist + UA corporativo + telemetria de bloqueio |
+| `tjrr` | Tribunal de Justiça de Roraima | `pje` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `tjrs` | Tribunal de Justiça do Rio Grande do Sul | `eproc` | cnpj_exact:access_blocked<br>party_name:access_blocked | Nenhum endpoint público respondeu de forma consultável | Bloqueio/WAF: exigir IP fixo + allowlist + UA corporativo + telemetria de bloqueio |
+| `tjse` | Tribunal de Justiça de Sergipe | `pje` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `tjto` | Tribunal de Justiça do Tocantins | `eproc` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `trf4` | TRF 4ª Região | `eproc` | cnpj_exact:public_query_disabled<br>party_name:public_query_disabled | Portal informa que a consulta pública está desativada | Sem correção via crawler (consulta pública desativada oficialmente) |
+| `trf6` | TRF 6ª Região | `pje` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `trt1` | TRT 1ª Região | `pje` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `trt10` | TRT 10ª Região | `pje` | cnpj_exact:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `trt12` | TRT 12ª Região | `pje` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `trt16` | TRT 16ª Região | `pje` | cnpj_exact:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `trt17` | TRT 17ª Região | `pje` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `trt20` | TRT 20ª Região | `pje` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `trt23` | TRT 23ª Região | `pje` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `trt5` | TRT 5ª Região | `pje` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `trt6` | TRT 6ª Região | `pje` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
+| `trt8` | TRT 8ª Região | `pje` | cnpj_exact:timeout_or_network<br>party_name:timeout_or_network | Nenhum endpoint público respondeu de forma consultável | Rede/estabilidade: timeout por tribunal, retries com jitter, hosts alternativos e circuito de retentativa |
 
-## Priorização sugerida (para atacar rápido)
-1. **Correções de URL e rota (ganho rápido)**
-- `tjam` (`http_404`): atualizar URL ativa.
-- `trf3` (`timeout_or_network` em endpoint não padrão): criar conector custom com rota correta.
+## Observações críticas para o dev
+1. O problema de runtime do Playwright foi parcialmente resolvido.
+- Saiu do erro `Executable doesn't exist`.
+- Agora os erros remanescentes são de fluxo real: `no_automatable_form`, `page crashed`, `ERR_NAME_NOT_RESOLVED`, `access_blocked`.
 
-2. **Bloqueios explícitos (depende de infraestrutura/acesso)**
-- `tjro` (`access_blocked`)
-- `tjrs` (`http_403`)
-- Ações: IP fixo, cabeçalhos corporativos, eventual acordo de acesso, observabilidade de bloqueio.
+2. Casos PJe dinâmicos que exigem conector browser dedicado imediato:
+- `tjmt`: browser abre, mas não encontra campo editável.
+- `tjpa`: browser abre, porém `page.goto` crasha.
+- `tjpi`: falha DNS do host (`ERR_NAME_NOT_RESOLVED`) no ambiente de execução.
 
-3. **Páginas dinâmicas sem form parseável (browser-first)**
-- `tjmt`, `tjpa`, `tjpe`, `tjpi` (`no_automatable_form`)
-- Ação: conector Playwright com seleção por label e submit real.
+3. Casos bloqueados por portal (WAF/anti-bot) que não fecham só com código:
+- `stj`, `tjro`, `tjrs`.
 
-4. **Timeout/rede (maior volume de falhas)**
-- `stf`, `tjal`, `tjdft`, `tjes`, `tjgo`, `tjms`, `tjpb`, `tjrn`, `tjrr`, `tjse`, `tjto`, `trf6`, `trt17`
-- Ação: timeout maior por família, retries com jitter, tentativa de URL alternativa e métrica de disponibilidade por tribunal.
+4. Caso oficialmente indisponível:
+- `trf4` com `public_query_disabled`.
 
-5. **Sem solução técnica por crawler (restrição oficial)**
-- `trf4` (`public_query_disabled`)
+## Backlog objetivo (prioridade)
+1. **P0 Browser profiles por tribunal (PJe dinâmico)**
+- Criar perfil dedicado para `tjmt` e `tjpa` via Playwright capture (`selector map`, `submit`, waits, fallback de iframe/shadow).
+- Para `tjpi`, validar host alternativo e DNS no ambiente Railway.
 
-## Backlog técnico objetivo para o dev
-1. Criar `connector_profile` por tribunal problemático (JSON) com:
-- URL inicial real
-- Método/form action
-- Campos `cnpj_exact` e `party_name`
-- Necessidade de sessão/token/viewstate
-- Estratégia de paginação
+2. **P0 Infra para bloqueio de portal**
+- IP fixo/egress dedicado.
+- Cabeçalhos estáveis + rotação controlada de UA.
+- Telemetria de bloqueio (HTTP 403, challenge pages, fingerprint).
 
-2. Adicionar motor browser (`playwright`) somente para tribunais com `no_automatable_form`.
+3. **P1 Resiliência de rede por tribunal**
+- Timeout e retries por perfil (já iniciado), com ajuste fino nos tribunais de maior falha.
+- Circuit breaker por host para evitar avalanche e degradação global.
 
-3. Aumentar robustez de rede por família:
-- `timeoutMs` por tribunal
-- retries exponenciais com jitter
-- circuit-breaker curto para evitar avalanche
+4. **P1 Catálogo/URL ativo por tribunal**
+- Conferência contínua de host/rota pública por família (PJe/eproc/esaj/custom).
 
-4. Instrumentar telemetria persistente por tribunal:
-- `first_byte_ms`, `dns/connect/tls` (quando possível)
-- status HTTP
-- motivo final
-- hash da URL final
+5. **P2 Telemetria persistente para diagnóstico fino**
+- Salvar `final_url`, `status_http`, `first_byte_ms`, erro de parser e hash da resposta por tribunal/query.
 
-5. Classificar indisponibilidade com semântica de produto:
-- `blocked_by_portal`
-- `portal_unavailable`
-- `portal_disabled`
-- `needs_browser_flow`
-
-## Como reproduzir localmente
-1. Rodar snapshot completo:
+## Como reproduzir rápido
+1. Disparar análise:
 ```bash
-node --input-type=module <<'NODE'
-import fs from 'node:fs';
-import { getDefaultTribunalCatalog } from './server/judicial-catalog.mjs';
-import { runGenericTribunalConnector } from './server/judicial-generic-connectors.mjs';
-
-const catalog = getDefaultTribunalCatalog().filter(t => t.ramo !== 'eleitoral' && t.tribunal_id !== 'tse');
-for (const tribunal of catalog) {
-  if (tribunal.connector_family === 'datajud') continue;
-  const out = await runGenericTribunalConnector({
-    connectorFamily: tribunal.connector_family,
-    tribunal,
-    queryMode: 'cnpj_exact',
-    document: '17140820000181',
-    timeoutMs: 10000,
-  });
-  console.log(tribunal.tribunal_id, out.status, out.statusReason);
-}
-NODE
+curl -sS -X POST "https://data-sweep-engine-web-production.up.railway.app/api/analyze-cnpj" \
+  -H "content-type: application/json" \
+  -d '{"cnpj":"17140820000181"}'
 ```
-
-2. Snapshot bruto usado neste relatório:
-- `tmp/tribunal-non-working-snapshot.json`
-
-## Observação importante
-Este relatório é um retrato **pontual** de disponibilidade de portais públicos (alto grau de instabilidade). Parte dos `timeout_or_network` pode variar por horário, origem de IP e políticas anti-bot dos tribunais.
+2. Ler cobertura judicial do `run_id` retornado:
+```bash
+curl -sS "https://data-sweep-engine-web-production.up.railway.app/api/investigations/<RUN_ID>/judicial/coverage"
+```
