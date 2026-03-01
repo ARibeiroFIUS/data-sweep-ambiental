@@ -1,7 +1,7 @@
 import { cleanDocument, normalizePersonName } from "./common-utils.mjs";
 import fs from "node:fs";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 
 const DEFAULT_BROWSER_TRIBUNALS = ["tjmt", "tjpa", "tjpe", "tjpi"];
@@ -54,8 +54,33 @@ function resolveLocalChromiumExecutable() {
   return "";
 }
 
+function resolveSystemChromiumExecutable() {
+  const configured = String(process.env.CHROMIUM_PATH ?? "").trim();
+  const candidates = [
+    configured,
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/bin/chromium",
+    "/nix/var/nix/profiles/default/bin/chromium",
+    "/nix/var/nix/profiles/default/bin/chromium-browser",
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+
+  const lookups = ["chromium", "chromium-browser"];
+  for (const bin of lookups) {
+    const result = spawnSync("which", [bin], { encoding: "utf8" });
+    const resolved = String(result?.stdout ?? "").trim();
+    if (resolved && fs.existsSync(resolved)) return resolved;
+  }
+
+  return "";
+}
+
 async function ensureLocalChromiumExecutable() {
-  const existing = resolveLocalChromiumExecutable();
+  const existing = resolveLocalChromiumExecutable() || resolveSystemChromiumExecutable();
   if (existing) return existing;
   if (chromiumInstallAttempted && !chromiumInstallPromise) return "";
 
@@ -81,7 +106,7 @@ async function ensureLocalChromiumExecutable() {
   }
 
   await chromiumInstallPromise;
-  return resolveLocalChromiumExecutable();
+  return resolveLocalChromiumExecutable() || resolveSystemChromiumExecutable();
 }
 
 function getBrowserTribunalSet() {
