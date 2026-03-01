@@ -1,3 +1,5 @@
+import { PUBLIC_SEARCH_URL_BY_TRIBUNAL } from "./judicial-public-search-urls.mjs";
+
 const TRIBUNAL_QUERY_MODES_FULL = ["cnpj_exact", "party_name", "process_number"];
 const TRIBUNAL_QUERY_MODES_NAME_OR_PROCESS = ["party_name", "process_number"];
 
@@ -12,6 +14,14 @@ function makeTribunal({
   priority = 50,
   config = {},
 }) {
+  const mergedConfig = {
+    ...(config ?? {}),
+  };
+  const mappedUrl = PUBLIC_SEARCH_URL_BY_TRIBUNAL[String(tribunalId ?? "").toLowerCase()];
+  if (mappedUrl && !mergedConfig.base_url && ramo !== "eleitoral") {
+    mergedConfig.base_url = mappedUrl;
+  }
+
   return {
     tribunal_id: tribunalId,
     nome,
@@ -21,16 +31,16 @@ function makeTribunal({
     query_modes_supported_json: queryModes,
     active,
     priority,
-    config_json: config,
+    config_json: mergedConfig,
   };
 }
 
 const SUPERIORES = [
-  makeTribunal({ tribunalId: "stf", nome: "Supremo Tribunal Federal", ramo: "superior", ufScope: "*", connectorFamily: "datajud", priority: 100 }),
-  makeTribunal({ tribunalId: "stj", nome: "Superior Tribunal de Justiça", ramo: "superior", ufScope: "*", connectorFamily: "datajud", priority: 100 }),
-  makeTribunal({ tribunalId: "tst", nome: "Tribunal Superior do Trabalho", ramo: "superior", ufScope: "*", connectorFamily: "datajud", priority: 95 }),
+  makeTribunal({ tribunalId: "stf", nome: "Supremo Tribunal Federal", ramo: "superior", ufScope: "*", connectorFamily: "custom", priority: 100, config: { fallbackFamilies: ["datajud"] } }),
+  makeTribunal({ tribunalId: "stj", nome: "Superior Tribunal de Justiça", ramo: "superior", ufScope: "*", connectorFamily: "custom", priority: 100, config: { fallbackFamilies: ["datajud"] } }),
+  makeTribunal({ tribunalId: "tst", nome: "Tribunal Superior do Trabalho", ramo: "superior", ufScope: "*", connectorFamily: "custom", priority: 95, config: { fallbackFamilies: ["datajud"] } }),
   makeTribunal({ tribunalId: "tse", nome: "Tribunal Superior Eleitoral", ramo: "superior", ufScope: "*", connectorFamily: "datajud", priority: 90 }),
-  makeTribunal({ tribunalId: "stm", nome: "Superior Tribunal Militar", ramo: "superior", ufScope: "*", connectorFamily: "datajud", priority: 80 }),
+  makeTribunal({ tribunalId: "stm", nome: "Superior Tribunal Militar", ramo: "superior", ufScope: "*", connectorFamily: "custom", priority: 80, config: { fallbackFamilies: ["datajud"] } }),
 ];
 
 const TRFS = [

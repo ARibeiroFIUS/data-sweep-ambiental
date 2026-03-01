@@ -401,11 +401,6 @@ async function submitForm({ form, timeoutMs, queryMode, queryValue, session, ref
 
 function buildPjeCandidates(tribunalId) {
   const hosts = new Set();
-  hosts.add(`pje.${tribunalId}.jus.br`);
-  hosts.add(`consultapublicapje.${tribunalId}.jus.br`);
-  hosts.add(`pje-consulta-publica.${tribunalId}.jus.br`);
-  hosts.add(`pje1g.${tribunalId}.jus.br`);
-  hosts.add(`pje2g.${tribunalId}.jus.br`);
   const aliases = PJE_HOST_ALIASES[tribunalId] ?? [];
   for (const alias of aliases) {
     if (alias.includes(".")) {
@@ -416,6 +411,11 @@ function buildPjeCandidates(tribunalId) {
     hosts.add(`consultapublicapje.${alias}.jus.br`);
     hosts.add(`pje-consulta-publica.${alias}.jus.br`);
   }
+  hosts.add(`pje.${tribunalId}.jus.br`);
+  hosts.add(`consultapublicapje.${tribunalId}.jus.br`);
+  hosts.add(`pje-consulta-publica.${tribunalId}.jus.br`);
+  hosts.add(`pje1g.${tribunalId}.jus.br`);
+  hosts.add(`pje2g.${tribunalId}.jus.br`);
 
   const paths = [
     "/pje/ConsultaPublica/listView.seam",
@@ -468,17 +468,49 @@ function buildCustomCandidates(tribunalId) {
 
 function buildCandidateUrls(connectorFamily, tribunal) {
   const explicitBase = String(tribunal?.config_json?.base_url ?? "").trim();
-  if (explicitBase) {
-    return [explicitBase];
-  }
-
   const tribunalId = String(tribunal?.tribunal_id ?? "").toLowerCase();
-  if (!tribunalId) return [];
-  if (connectorFamily === "pje") return buildPjeCandidates(tribunalId);
-  if (connectorFamily === "eproc") return buildEprocCandidates(tribunalId);
-  if (connectorFamily === "projudi") return buildProjudiCandidates(tribunalId);
-  if (connectorFamily === "custom") return buildCustomCandidates(tribunalId);
-  return [];
+  const derivedCandidates = (() => {
+    if (!tribunalId) return [];
+    if (connectorFamily === "pje") return buildPjeCandidates(tribunalId);
+    if (connectorFamily === "eproc") return buildEprocCandidates(tribunalId);
+    if (connectorFamily === "projudi") return buildProjudiCandidates(tribunalId);
+    if (connectorFamily === "custom") return buildCustomCandidates(tribunalId);
+    return [];
+  })();
+
+  const combined = [
+    ...(explicitBase ? [explicitBase] : []),
+    ...derivedCandidates,
+  ];
+  return Array.from(new Set(combined.filter(Boolean)));
+}
+
+function discoverSearchLinks(html, baseUrl, connectorFamily) {
+  const source = String(html ?? "");
+  const links = [];
+  const hrefRegex = /<a\b[^>]*href="([^"]+)"[^>]*>/gi;
+  let match;
+  while ((match = hrefRegex.exec(source)) !== null) {
+    const href = String(match[1] ?? "").trim();
+    if (!href || href.startsWith("javascript:") || href.startsWith("#")) continue;
+    let absolute = "";
+    try {
+      absolute = new URL(href, baseUrl).toString();
+    } catch {
+      continue;
+    }
+    const lower = absolute.toLowerCase();
+    const useful =
+      (connectorFamily === "pje" &&
+        (lower.includes("consultapublica/listview.seam") || lower.includes("/consultapublica/"))) ||
+      (connectorFamily === "esaj" &&
+        (lower.includes("/cpopg/open.do") || lower.includes("/cpopg/search.do") || lower.includes("/cposg/open.do"))) ||
+      (connectorFamily === "eproc" && lower.includes("externo_controlador.php?acao=processo_consulta_publica")) ||
+      (connectorFamily === "projudi" && lower.includes("consultapublica.do")) ||
+      (connectorFamily === "custom" && (lower.includes("consulta-processual") || lower.includes("consultapublica")));
+    if (useful) links.push(absolute);
+  }
+  return Array.from(new Set(links)).slice(0, 6);
 }
 
 function validateQueryInput(queryMode, document, name, processNumber) {
@@ -544,8 +576,8 @@ export async function runGenericTribunalConnector({
     };
   }
 
-  const candidates = buildCandidateUrls(connectorFamily, tribunal).slice(0, 12);
-  if (candidates.length === 0) {
+  const initialCandidates = buildCandidateUrls(connectorFamily, tribunal);
+  if (initialCandidates.length === 0) {
     return {
       connectorFamily,
       queryMode,
@@ -557,6 +589,14 @@ export async function runGenericTribunalConnector({
       processes: [],
     };
   }
+  const maxCandidates =
+    connectorFamily === "pje"
+      ? 28
+      : connectorFamily === "custom"
+        ? 20
+        : 14;
+  const queue = [...initialCandidates];
+  const visited = new Set();
 
   let firstReachableHtml = "";
   let reachableUrl = "";
@@ -566,7 +606,11 @@ export async function runGenericTribunalConnector({
   let observedLogin = false;
   const validationErrorsSeen = [];
 
-  for (const candidate of candidates) {
+  while (queue.length > 0 && visited.size < maxCandidates) {
+    const candidate = queue.shift();
+    if (!candidate || visited.has(candidate)) continue;
+    visited.add(candidate);
+
     const session = createHttpSession();
     const page = await fetchHtmlWithSession(candidate, timeoutMs, session);
     if (!page.ok) {
@@ -622,6 +666,11 @@ export async function runGenericTribunalConnector({
           evidence: [],
           processes: directProcesses,
         };
+      }
+      const discoveredLinks = discoverSearchLinks(page.html, page.url, connectorFamily);
+      for (const link of discoveredLinks) {
+        if (visited.has(link) || queue.includes(link)) continue;
+        queue.push(link);
       }
       continue;
     }
