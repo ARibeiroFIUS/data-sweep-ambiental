@@ -12,7 +12,14 @@
     "sync:pgfn": "node server/jobs/run-pgfn-sync.mjs",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "pw:install": "playwright install chromium",
+    "pw:test": "playwright test",
+    "pw:test:headed": "playwright test --headed",
+    "pw:test:tribunais": "playwright test playwright/tests/tribunais-base.spec.ts",
+    "tribunal:list": "node scripts/tribunal-list.mjs",
+    "tribunal:codegen": "node scripts/tribunal-codegen.mjs",
+    "tribunal:capture": "node scripts/tribunal-capture.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
@@ -76,6 +83,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/typography": "^0.5.16",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.0.0",

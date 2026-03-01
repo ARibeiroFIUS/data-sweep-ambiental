@@ -28,3 +28,8 @@ dist-ssr
 
 # Supabase temp
 supabase/.temp/
+
+# Playwright crawler artifacts
+artifacts/
+playwright-report/
+test-results/

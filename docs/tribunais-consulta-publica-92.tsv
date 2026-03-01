@@ -1,0 +1,93 @@
+tribunal_id	nome	ramo	connector_family	consulta_publica_url
+stf	Supremo Tribunal Federal	superior	datajud	https://portal.stf.jus.br/processos/consultaProcessual.asp
+stj	Superior Tribunal de Justiça	superior	datajud	https://www.stj.jus.br/sites/portalp/processos/consulta-processual
+tst	Tribunal Superior do Trabalho	superior	datajud	https://consultaprocessual.tst.jus.br/consultaProcessual/
+tse	Tribunal Superior Eleitoral	superior	datajud	https://consultaunificadapje.tse.jus.br/
+stm	Superior Tribunal Militar	superior	datajud	https://processos.stm.jus.br/
+trf1	TRF 1ª Região	federal	pje	https://pje1g-consultapublica.trf1.jus.br/consultapublica/ConsultaPublica/listView.seam
+trf2	TRF 2ª Região	federal	pje	https://www10.trf2.jus.br/consultas/
+trf3	TRF 3ª Região	federal	pje	https://web.trf3.jus.br/consultas/Internet/ConsultaProcessual
+trf4	TRF 4ª Região	federal	eproc	https://eproc.trf4.jus.br/eproc2trf4/externo_controlador.php?acao=processo_consulta_publica
+trf5	TRF 5ª Região	federal	pje	https://pje.trf5.jus.br/pje/ConsultaPublica/listView.seam
+trf6	TRF 6ª Região	federal	pje	https://pje.trf6.jus.br/pje/ConsultaPublica/listView.seam
+trt1	TRT 1ª Região	trabalhista	pje	https://pje.trt1.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt2	TRT 2ª Região	trabalhista	pje	https://pje.trt2.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt3	TRT 3ª Região	trabalhista	pje	https://pje.trt3.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt4	TRT 4ª Região	trabalhista	pje	https://pje.trt4.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt5	TRT 5ª Região	trabalhista	pje	https://pje.trt5.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt6	TRT 6ª Região	trabalhista	pje	https://pje.trt6.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt7	TRT 7ª Região	trabalhista	pje	https://pje.trt7.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt8	TRT 8ª Região	trabalhista	pje	https://pje.trt8.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt9	TRT 9ª Região	trabalhista	pje	https://pje.trt9.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt10	TRT 10ª Região	trabalhista	pje	https://pje.trt10.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt11	TRT 11ª Região	trabalhista	pje	https://pje.trt11.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt12	TRT 12ª Região	trabalhista	pje	https://pje.trt12.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt13	TRT 13ª Região	trabalhista	pje	https://pje.trt13.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt14	TRT 14ª Região	trabalhista	pje	https://pje.trt14.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt15	TRT 15ª Região	trabalhista	pje	https://pje.trt15.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt16	TRT 16ª Região	trabalhista	pje	https://pje.trt16.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt17	TRT 17ª Região	trabalhista	pje	https://pje.trtes.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt18	TRT 18ª Região	trabalhista	pje	https://pje.trt18.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt19	TRT 19ª Região	trabalhista	pje	https://pje.trt19.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt20	TRT 20ª Região	trabalhista	pje	https://pje.trt20.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt21	TRT 21ª Região	trabalhista	pje	https://pje.trt21.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt22	TRT 22ª Região	trabalhista	pje	https://pje.trt22.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt23	TRT 23ª Região	trabalhista	pje	https://pje.trt23.jus.br/primeirograu/ConsultaPublica/listView.seam
+trt24	TRT 24ª Região	trabalhista	pje	https://pje.trt24.jus.br/primeirograu/ConsultaPublica/listView.seam
+tjac	Tribunal de Justiça do Acre	estadual	esaj	https://esaj.tjac.jus.br/cpopg/open.do
+tjal	Tribunal de Justiça de Alagoas	estadual	esaj	https://esaj.tjal.jus.br/cpopg/open.do
+tjam	Tribunal de Justiça do Amazonas	estadual	esaj	https://esaj.tjam.jus.br/cpopg/open.do
+tjap	Tribunal de Justiça do Amapá	estadual	pje	https://pje.tjap.jus.br/pje/ConsultaPublica/listView.seam
+tjba	Tribunal de Justiça da Bahia	estadual	pje	https://pje.tjba.jus.br/pje/ConsultaPublica/listView.seam
+tjce	Tribunal de Justiça do Ceará	estadual	esaj	https://esaj.tjce.jus.br/cpopg/open.do
+tjdft	Tribunal de Justiça do Distrito Federal e Territórios	estadual	pje	https://pje.tjdft.jus.br/pje/ConsultaPublica/listView.seam
+tjes	Tribunal de Justiça do Espírito Santo	estadual	pje	https://sistemas.tjes.jus.br/pje/ConsultaPublica/listView.seam
+tjgo	Tribunal de Justiça de Goiás	estadual	pje	https://pje.tjgo.jus.br/pje/ConsultaPublica/listView.seam
+tjma	Tribunal de Justiça do Maranhão	estadual	pje	https://pje.tjma.jus.br/pje/ConsultaPublica/listView.seam
+tjmg	Tribunal de Justiça de Minas Gerais	estadual	pje	https://pje.tjmg.jus.br/pje/ConsultaPublica/listView.seam
+tjms	Tribunal de Justiça do Mato Grosso do Sul	estadual	eproc	https://eproc.tjms.jus.br/eprocV2/externo_controlador.php?acao=processo_consulta_publica
+tjmt	Tribunal de Justiça do Mato Grosso	estadual	pje	https://pje.tjmt.jus.br/pje/ConsultaPublica/listView.seam
+tjpa	Tribunal de Justiça do Pará	estadual	pje	https://pje.tjpa.jus.br/pje/ConsultaPublica/listView.seam
+tjpb	Tribunal de Justiça da Paraíba	estadual	pje	https://pje.tjpb.jus.br/pje/ConsultaPublica/listView.seam
+tjpe	Tribunal de Justiça de Pernambuco	estadual	pje	https://pje.tjpe.jus.br/1g/ConsultaPublica/listView.seam
+tjpi	Tribunal de Justiça do Piauí	estadual	pje	https://tjpi.pje.jus.br/pje/ConsultaPublica/listView.seam
+tjpr	Tribunal de Justiça do Paraná	estadual	projudi	https://projudi.tjpr.jus.br/projudi/
+tjrj	Tribunal de Justiça do Rio de Janeiro	estadual	pje	https://tjrj.pje.jus.br/1g/ConsultaPublica/listView.seam
+tjrn	Tribunal de Justiça do Rio Grande do Norte	estadual	pje	https://pje.tjrn.jus.br/pje1grau/ConsultaPublica/listView.seam
+tjro	Tribunal de Justiça de Rondônia	estadual	pje	https://pje.tjro.jus.br/pg/ConsultaPublica/listView.seam
+tjrr	Tribunal de Justiça de Roraima	estadual	pje	https://pje.tjrr.jus.br/pje/ConsultaPublica/listView.seam
+tjrs	Tribunal de Justiça do Rio Grande do Sul	estadual	eproc	https://eproc1g.tjrs.jus.br/eproc/externo_controlador.php?acao=processo_consulta_publica
+tjsc	Tribunal de Justiça de Santa Catarina	estadual	eproc	https://eproc1g.tjsc.jus.br/eproc/externo_controlador.php?acao=processo_consulta_publica
+tjse	Tribunal de Justiça de Sergipe	estadual	pje	https://pje.tjse.jus.br/pje/ConsultaPublica/listView.seam
+tjsp	Tribunal de Justiça de São Paulo	estadual	esaj	https://esaj.tjsp.jus.br/cpopg/open.do
+tjto	Tribunal de Justiça do Tocantins	estadual	eproc	https://eproc1g.tjto.jus.br/eprocV2_prod_1grau/externo_controlador.php?acao=processo_consulta_publica
+tre-ac	Tribunal Regional Eleitoral AC	eleitoral	custom	https://www.tre-ac.jus.br/servicos-judiciais/pje/consulta-processual
+tre-al	Tribunal Regional Eleitoral AL	eleitoral	custom	https://www.tre-al.jus.br/servicos-judiciais/pje/consulta-processual
+tre-am	Tribunal Regional Eleitoral AM	eleitoral	custom	https://www.tre-am.jus.br/servicos-judiciais/pje/consulta-processual
+tre-ap	Tribunal Regional Eleitoral AP	eleitoral	custom	https://www.tre-ap.jus.br/servicos-judiciais/pje/consulta-processual
+tre-ba	Tribunal Regional Eleitoral BA	eleitoral	custom	https://www.tre-ba.jus.br/servicos-judiciais/pje/consulta-processual
+tre-ce	Tribunal Regional Eleitoral CE	eleitoral	custom	https://www.tre-ce.jus.br/servicos-judiciais/pje/consulta-processual
+tre-df	Tribunal Regional Eleitoral DF	eleitoral	custom	https://www.tre-df.jus.br/servicos-judiciais/pje/consulta-processual
+tre-es	Tribunal Regional Eleitoral ES	eleitoral	custom	https://www.tre-es.jus.br/servicos-judiciais/pje/consulta-processual
+tre-go	Tribunal Regional Eleitoral GO	eleitoral	custom	https://www.tre-go.jus.br/servicos-judiciais/pje/consulta-processual
+tre-ma	Tribunal Regional Eleitoral MA	eleitoral	custom	https://www.tre-ma.jus.br/servicos-judiciais/pje/consulta-processual
+tre-mg	Tribunal Regional Eleitoral MG	eleitoral	custom	https://www.tre-mg.jus.br/servicos-judiciais/pje/consulta-processual
+tre-ms	Tribunal Regional Eleitoral MS	eleitoral	custom	https://www.tre-ms.jus.br/servicos-judiciais/pje/consulta-processual
+tre-mt	Tribunal Regional Eleitoral MT	eleitoral	custom	https://www.tre-mt.jus.br/servicos-judiciais/pje/consulta-processual
+tre-pa	Tribunal Regional Eleitoral PA	eleitoral	custom	https://www.tre-pa.jus.br/servicos-judiciais/pje/consulta-processual
+tre-pb	Tribunal Regional Eleitoral PB	eleitoral	custom	https://www.tre-pb.jus.br/servicos-judiciais/pje/consulta-processual
+tre-pe	Tribunal Regional Eleitoral PE	eleitoral	custom	https://www.tre-pe.jus.br/servicos-judiciais/pje/consulta-processual
+tre-pi	Tribunal Regional Eleitoral PI	eleitoral	custom	https://www.tre-pi.jus.br/servicos-judiciais/pje/consulta-processual
+tre-pr	Tribunal Regional Eleitoral PR	eleitoral	custom	https://www.tre-pr.jus.br/servicos-judiciais/pje/consulta-processual
+tre-rj	Tribunal Regional Eleitoral RJ	eleitoral	custom	https://www.tre-rj.jus.br/servicos-judiciais/pje/consulta-processual
+tre-rn	Tribunal Regional Eleitoral RN	eleitoral	custom	https://www.tre-rn.jus.br/servicos-judiciais/pje/consulta-processual
+tre-ro	Tribunal Regional Eleitoral RO	eleitoral	custom	https://www.tre-ro.jus.br/servicos-judiciais/pje/consulta-processual
+tre-rr	Tribunal Regional Eleitoral RR	eleitoral	custom	https://www.tre-rr.jus.br/servicos-judiciais/pje/consulta-processual
+tre-rs	Tribunal Regional Eleitoral RS	eleitoral	custom	https://www.tre-rs.jus.br/servicos-judiciais/pje/consulta-processual
+tre-sc	Tribunal Regional Eleitoral SC	eleitoral	custom	https://www.tre-sc.jus.br/servicos-judiciais/pje/consulta-processual
+tre-se	Tribunal Regional Eleitoral SE	eleitoral	custom	https://www.tre-se.jus.br/servicos-judiciais/pje/consulta-processual
+tre-sp	Tribunal Regional Eleitoral SP	eleitoral	custom	https://www.tre-sp.jus.br/servicos-judiciais/pje/consulta-processual
+tre-to	Tribunal Regional Eleitoral TO	eleitoral	custom	https://www.tre-to.jus.br/servicos-judiciais/pje/consulta-processual
+tjm-mg	Tribunal de Justiça Militar de Minas Gerais	militar_estadual	custom	https://consulta.tjmmg.jus.br/#/simplificada
+tjm-rs	Tribunal de Justiça Militar do Rio Grande do Sul	militar_estadual	custom	https://www.tjmrs.jus.br/processos/consulta-processual
+tjm-sp	Tribunal de Justiça Militar do Estado de São Paulo	militar_estadual	pje	https://pje.tjmsp.jus.br/pje-web/
