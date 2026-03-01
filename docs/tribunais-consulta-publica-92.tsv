@@ -36,7 +36,7 @@ trt23	TRT 23ª Região	trabalhista	pje	https://pje.trt23.jus.br/primeirograu/Con
 trt24	TRT 24ª Região	trabalhista	pje	https://pje.trt24.jus.br/primeirograu/ConsultaPublica/listView.seam
 tjac	Tribunal de Justiça do Acre	estadual	esaj	https://esaj.tjac.jus.br/cpopg/open.do
 tjal	Tribunal de Justiça de Alagoas	estadual	esaj	https://esaj.tjal.jus.br/cpopg/open.do
-tjam	Tribunal de Justiça do Amazonas	estadual	esaj	https://esaj.tjam.jus.br/cpopg/open.do
+tjam	Tribunal de Justiça do Amazonas	estadual	esaj	https://consultasaj.tjam.jus.br/cpopg/open.do
 tjap	Tribunal de Justiça do Amapá	estadual	pje	https://pje.tjap.jus.br/pje/ConsultaPublica/listView.seam
 tjba	Tribunal de Justiça da Bahia	estadual	pje	https://pje.tjba.jus.br/pje/ConsultaPublica/listView.seam
 tjce	Tribunal de Justiça do Ceará	estadual	esaj	https://esaj.tjce.jus.br/cpopg/open.do
@@ -46,7 +46,7 @@ tjgo	Tribunal de Justiça de Goiás	estadual	pje	https://pje.tjgo.jus.br/pje/Con
 tjma	Tribunal de Justiça do Maranhão	estadual	pje	https://pje.tjma.jus.br/pje/ConsultaPublica/listView.seam
 tjmg	Tribunal de Justiça de Minas Gerais	estadual	pje	https://pje.tjmg.jus.br/pje/ConsultaPublica/listView.seam
 tjms	Tribunal de Justiça do Mato Grosso do Sul	estadual	eproc	https://eproc.tjms.jus.br/eprocV2/externo_controlador.php?acao=processo_consulta_publica
-tjmt	Tribunal de Justiça do Mato Grosso	estadual	pje	https://pje.tjmt.jus.br/pje/ConsultaPublica/listView.seam
+tjmt	Tribunal de Justiça do Mato Grosso	estadual	pje	https://consultaprocessual.tjmt.jus.br/
 tjpa	Tribunal de Justiça do Pará	estadual	pje	https://pje.tjpa.jus.br/pje/ConsultaPublica/listView.seam
 tjpb	Tribunal de Justiça da Paraíba	estadual	pje	https://pje.tjpb.jus.br/pje/ConsultaPublica/listView.seam
 tjpe	Tribunal de Justiça de Pernambuco	estadual	pje	https://pje.tjpe.jus.br/1g/ConsultaPublica/listView.seam
@@ -54,7 +54,7 @@ tjpi	Tribunal de Justiça do Piauí	estadual	pje	https://tjpi.pje.jus.br/pje/Con
 tjpr	Tribunal de Justiça do Paraná	estadual	projudi	https://projudi.tjpr.jus.br/projudi/
 tjrj	Tribunal de Justiça do Rio de Janeiro	estadual	pje	https://tjrj.pje.jus.br/1g/ConsultaPublica/listView.seam
 tjrn	Tribunal de Justiça do Rio Grande do Norte	estadual	pje	https://pje.tjrn.jus.br/pje1grau/ConsultaPublica/listView.seam
-tjro	Tribunal de Justiça de Rondônia	estadual	pje	https://pje.tjro.jus.br/pg/ConsultaPublica/listView.seam
+tjro	Tribunal de Justiça de Rondônia	estadual	pje	https://pjepg-consulta.tjro.jus.br/consulta/ConsultaPublica/listView.seam
 tjrr	Tribunal de Justiça de Roraima	estadual	pje	https://pje.tjrr.jus.br/pje/ConsultaPublica/listView.seam
 tjrs	Tribunal de Justiça do Rio Grande do Sul	estadual	eproc	https://eproc1g.tjrs.jus.br/eproc/externo_controlador.php?acao=processo_consulta_publica
 tjsc	Tribunal de Justiça de Santa Catarina	estadual	eproc	https://eproc1g.tjsc.jus.br/eproc/externo_controlador.php?acao=processo_consulta_publica
