@@ -2,6 +2,7 @@ import { cleanDocument, parseBooleanEnv, normalizePersonName } from "./common-ut
 import { fetchWithTimeout } from "./http-utils.mjs";
 import { queryDatajudTribunal } from "./datajud-query.mjs";
 import { runGenericTribunalConnector } from "./judicial-generic-connectors.mjs";
+import { runBrowserTribunalConnector, shouldUseBrowserFallbackForTribunal } from "./judicial-browser-connectors.mjs";
 
 const CONNECTOR_FEATURE_FLAGS = {
   datajud: "FEATURE_JUDICIAL_DATAJUD",
@@ -20,6 +21,7 @@ const ESAJ_DETAIL_CONCURRENCY = Number.parseInt(process.env.JUDICIAL_ESAJ_DETAIL
 const ESAJ_FETCH_RETRIES = Number.parseInt(process.env.JUDICIAL_ESAJ_FETCH_RETRIES ?? "1", 10);
 const ESAJ_FETCH_RETRY_DELAY_MS = Number.parseInt(process.env.JUDICIAL_ESAJ_FETCH_RETRY_DELAY_MS ?? "500", 10);
 const DATAJUD_DISCOVERY_ENABLED = parseBooleanEnv(process.env.FEATURE_JUDICIAL_DATAJUD_DISCOVERY, false);
+const JUDICIAL_BROWSER_FALLBACK_ENABLED = parseBooleanEnv(process.env.FEATURE_JUDICIAL_BROWSER_FALLBACK, true);
 
 function isConnectorEnabled(connectorFamily) {
   const featureFlag = CONNECTOR_FEATURE_FLAGS[connectorFamily];
@@ -783,7 +785,7 @@ async function runFamilyConnector({ connectorFamily, tribunal, tribunalId, query
     connectorFamily === "projudi" ||
     connectorFamily === "custom"
   ) {
-    return runGenericTribunalConnector({
+    const genericResult = await runGenericTribunalConnector({
       connectorFamily,
       tribunal,
       queryMode,
@@ -791,6 +793,40 @@ async function runFamilyConnector({ connectorFamily, tribunal, tribunalId, query
       name,
       timeoutMs,
     });
+
+    const browserFallbackEligible =
+      JUDICIAL_BROWSER_FALLBACK_ENABLED &&
+      connectorFamily === "pje" &&
+      shouldUseBrowserFallbackForTribunal(tribunalId) &&
+      (queryMode === "cnpj_exact" || queryMode === "party_name") &&
+      (genericResult.status === "unavailable" ||
+        genericResult.statusReason === "no_automatable_form" ||
+        genericResult.statusReason === "timeout_or_network");
+
+    if (!browserFallbackEligible) {
+      return genericResult;
+    }
+
+    const browserResult = await runBrowserTribunalConnector({
+      connectorFamily,
+      tribunal,
+      queryMode,
+      document,
+      name,
+      timeoutMs: Math.max(timeoutMs, 15000),
+    });
+
+    if (browserResult.status === "success" || browserResult.status === "not_found") {
+      return {
+        ...browserResult,
+        message: `${browserResult.message} (fallback browser-first)`,
+      };
+    }
+
+    return {
+      ...genericResult,
+      message: `${genericResult.message}; browser-first: ${browserResult.message}`,
+    };
   }
 
   return runPlaceholderConnector({ connectorFamily, queryMode });
