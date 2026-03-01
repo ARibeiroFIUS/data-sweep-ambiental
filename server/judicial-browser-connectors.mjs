@@ -1,12 +1,18 @@
 import { cleanDocument, normalizePersonName } from "./common-utils.mjs";
 import fs from "node:fs";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 const DEFAULT_BROWSER_TRIBUNALS = ["tjmt", "tjpa", "tjpe", "tjpi"];
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
 const PROCESS_NUMBER_REGEX = /\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b/g;
+const execFileAsync = promisify(execFile);
+
+let chromiumInstallPromise = null;
+let chromiumInstallAttempted = false;
 
 function ensurePlaywrightBrowserPath() {
   const current = String(process.env.PLAYWRIGHT_BROWSERS_PATH ?? "").trim();
@@ -46,6 +52,36 @@ function resolveLocalChromiumExecutable() {
   }
 
   return "";
+}
+
+async function ensureLocalChromiumExecutable() {
+  const existing = resolveLocalChromiumExecutable();
+  if (existing) return existing;
+  if (chromiumInstallAttempted && !chromiumInstallPromise) return "";
+
+  if (!chromiumInstallPromise) {
+    chromiumInstallAttempted = true;
+    const timeoutMs = Math.max(
+      60_000,
+      Number.parseInt(process.env.JUDICIAL_BROWSER_INSTALL_TIMEOUT_MS ?? "240000", 10) || 240000,
+    );
+    chromiumInstallPromise = execFileAsync("npx", ["playwright", "install", "chromium"], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        PLAYWRIGHT_BROWSERS_PATH: "0",
+      },
+      timeout: timeoutMs,
+      maxBuffer: 10 * 1024 * 1024,
+    })
+      .catch(() => null)
+      .finally(() => {
+        chromiumInstallPromise = null;
+      });
+  }
+
+  await chromiumInstallPromise;
+  return resolveLocalChromiumExecutable();
 }
 
 function getBrowserTribunalSet() {
@@ -300,7 +336,7 @@ export async function runBrowserTribunalConnector({
     headless,
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   };
-  const resolvedExecutablePath = resolveLocalChromiumExecutable();
+  const resolvedExecutablePath = await ensureLocalChromiumExecutable();
   if (resolvedExecutablePath) {
     launchOptions.executablePath = resolvedExecutablePath;
   }
