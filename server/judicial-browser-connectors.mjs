@@ -1,10 +1,52 @@
 import { cleanDocument, normalizePersonName } from "./common-utils.mjs";
+import fs from "node:fs";
+import path from "node:path";
 
 const DEFAULT_BROWSER_TRIBUNALS = ["tjmt", "tjpa", "tjpe", "tjpi"];
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
 const PROCESS_NUMBER_REGEX = /\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b/g;
+
+function ensurePlaywrightBrowserPath() {
+  const current = String(process.env.PLAYWRIGHT_BROWSERS_PATH ?? "").trim();
+  if (!current) {
+    process.env.PLAYWRIGHT_BROWSERS_PATH = "0";
+  }
+}
+
+function resolveLocalChromiumExecutable() {
+  const configured = String(process.env.PLAYWRIGHT_EXECUTABLE_PATH ?? "").trim();
+  if (configured && fs.existsSync(configured)) return configured;
+
+  const browserRoots = [
+    path.resolve(process.cwd(), "node_modules/playwright-core/.local-browsers"),
+    path.resolve(process.cwd(), "node_modules/@playwright/test/node_modules/playwright-core/.local-browsers"),
+  ];
+  const executableSuffixes = [
+    ["chrome-headless-shell-linux64", "chrome-headless-shell"],
+    ["chrome-linux", "chrome"],
+  ];
+
+  for (const root of browserRoots) {
+    if (!fs.existsSync(root)) continue;
+    const entries = fs.readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+    const chromiumDirs = entries
+      .map((entry) => entry.name)
+      .filter((name) => name.startsWith("chromium-") || name.startsWith("chromium_headless_shell-"))
+      .sort()
+      .reverse();
+
+    for (const dir of chromiumDirs) {
+      for (const suffix of executableSuffixes) {
+        const candidate = path.join(root, dir, ...suffix);
+        if (fs.existsSync(candidate)) return candidate;
+      }
+    }
+  }
+
+  return "";
+}
 
 function getBrowserTribunalSet() {
   const raw = String(process.env.JUDICIAL_BROWSER_TRIBUNALS ?? "").trim();
@@ -236,6 +278,7 @@ export async function runBrowserTribunalConnector({
 
   let chromium = null;
   try {
+    ensurePlaywrightBrowserPath();
     const playwrightModule = await import("@playwright/test");
     chromium = playwrightModule.chromium;
   } catch {
@@ -257,8 +300,9 @@ export async function runBrowserTribunalConnector({
     headless,
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   };
-  if (process.env.PLAYWRIGHT_EXECUTABLE_PATH) {
-    launchOptions.executablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH;
+  const resolvedExecutablePath = resolveLocalChromiumExecutable();
+  if (resolvedExecutablePath) {
+    launchOptions.executablePath = resolvedExecutablePath;
   }
 
   let browser = null;
