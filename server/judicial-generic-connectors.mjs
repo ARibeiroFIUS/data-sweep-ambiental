@@ -28,6 +28,49 @@ const DEFAULT_HEADERS = {
   accept: "text/html,application/xhtml+xml",
 };
 
+function createHttpSession() {
+  return { cookies: new Map() };
+}
+
+function parseSetCookieHeaders(response) {
+  const headers = response?.headers;
+  if (!headers) return [];
+  if (typeof headers.getSetCookie === "function") {
+    try {
+      const values = headers.getSetCookie();
+      return Array.isArray(values) ? values : [];
+    } catch {
+      return [];
+    }
+  }
+  const single = headers.get("set-cookie");
+  if (!single) return [];
+  return single
+    .split(/,(?=[^;,=\s]+=[^;,]*)/g)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function storeResponseCookies(session, response) {
+  if (!session?.cookies) return;
+  for (const cookie of parseSetCookieHeaders(response)) {
+    const firstPart = String(cookie).split(";")[0] ?? "";
+    const divider = firstPart.indexOf("=");
+    if (divider <= 0) continue;
+    const key = firstPart.slice(0, divider).trim();
+    const value = firstPart.slice(divider + 1).trim();
+    if (!key) continue;
+    session.cookies.set(key, value);
+  }
+}
+
+function buildCookieHeader(session) {
+  if (!session?.cookies || session.cookies.size === 0) return "";
+  return Array.from(session.cookies.entries())
+    .map(([key, value]) => `${key}=${value}`)
+    .join("; ");
+}
+
 function decodeHtml(value) {
   return String(value ?? "")
     .replace(/&nbsp;/gi, " ")
@@ -45,15 +88,18 @@ function stripTags(value) {
 }
 
 function isCaptchaPage(html) {
-  const lower = String(html ?? "").toLowerCase();
+  const source = String(html ?? "");
+  const lower = source.toLowerCase();
+  const hasChallengeInput = /<input[^>]+name="answer"/i.test(source) || /<img[^>]+id="captcha/i.test(source);
   return (
-    lower.includes("captcha") ||
     lower.includes("g-recaptcha") ||
     lower.includes("h-captcha") ||
     lower.includes("tencentcaptcha") ||
+    lower.includes("digite os caracteres da imagem") ||
     lower.includes("sou humano") ||
     lower.includes("não sou robô") ||
-    lower.includes("nao sou robo")
+    lower.includes("nao sou robo") ||
+    hasChallengeInput
   );
 }
 
@@ -62,6 +108,57 @@ function isLoginPage(html) {
   const hasLoginWord = lower.includes("login") || lower.includes("entrar") || lower.includes("acesso");
   const hasPjeBrand = lower.includes("bem-vindo ao pje") || lower.includes("processo judicial eletrônico");
   return hasLoginWord && hasPjeBrand;
+}
+
+function isPublicSearchDisabledPage(html) {
+  const source = String(html ?? "");
+  const lower = source.toLowerCase();
+  return (
+    lower.includes("consulta pública está desativada") ||
+    lower.includes("consulta publica está desativada") ||
+    lower.includes("consulta pública indisponível") ||
+    lower.includes("consulta publica indisponivel") ||
+    /consulta\s+p.{0,2}blica\s+est.{0,2}\s+desativada/i.test(source)
+  );
+}
+
+function isAccessBlockedPage(html, statusCode = 0) {
+  const source = String(html ?? "");
+  const lower = source.toLowerCase();
+  const text = stripTags(source).toLowerCase();
+  return (
+    statusCode === 401 ||
+    statusCode === 403 ||
+    /^forbidden$/i.test(source.trim()) ||
+    lower.includes("acesso negado") ||
+    lower.includes("acesso bloqueado") ||
+    lower.includes("bloqueio temporário") ||
+    lower.includes("bloqueio temporario") ||
+    text.includes("bloqueio temporário") ||
+    text.includes("bloqueio temporario") ||
+    text.includes("portal institucional") ||
+    lower.includes("request blocked")
+  );
+}
+
+function parseValidationErrors(html) {
+  const errors = [];
+  const ulMatch = String(html ?? "").match(/<ul[^>]*id="ulMensErros"[^>]*>([\s\S]*?)<\/ul>/i);
+  if (!ulMatch) return errors;
+  const liRegex = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+  let liMatch;
+  while ((liMatch = liRegex.exec(ulMatch[1])) !== null) {
+    const message = stripTags(liMatch[1]);
+    if (!message) continue;
+    errors.push(message);
+  }
+  return errors;
+}
+
+function hasNoResultsMarker(html) {
+  return /nenhum resultado|nenhum processo|não foram encontrados|nao foram encontrados|nenhum registro encontrado|sem registros/i.test(
+    String(html ?? ""),
+  );
 }
 
 function parseForms(html, baseUrl) {
@@ -92,7 +189,36 @@ function parseForms(html, baseUrl) {
       if (!name) continue;
       const value = inputAttrs.match(/\bvalue="([^"]*)"/i)?.[1] ?? "";
       const type = (inputAttrs.match(/\btype="([^"]*)"/i)?.[1] ?? (tag === "button" ? "submit" : "text")).toLowerCase();
-      inputs.push({ tag, name, value, type });
+      const checked = /\bchecked(?:="checked")?/i.test(inputAttrs);
+      inputs.push({ tag, name, value, type, checked, options: undefined });
+    }
+
+    const selectRegex = /<select\b([^>]*)>([\s\S]*?)<\/select>/gi;
+    let selectMatch;
+    while ((selectMatch = selectRegex.exec(body)) !== null) {
+      const selectAttrs = selectMatch[1] ?? "";
+      const selectBody = selectMatch[2] ?? "";
+      const name = selectAttrs.match(/\bname="([^"]*)"/i)?.[1] ?? "";
+      if (!name) continue;
+      const options = [];
+      const optionRegex = /<option\b([^>]*)>([\s\S]*?)<\/option>/gi;
+      let optionMatch;
+      while ((optionMatch = optionRegex.exec(selectBody)) !== null) {
+        const optionAttrs = optionMatch[1] ?? "";
+        const optionValue = optionAttrs.match(/\bvalue="([^"]*)"/i)?.[1] ?? "";
+        const selected = /\bselected(?:="selected")?/i.test(optionAttrs);
+        options.push({ value: optionValue, selected });
+      }
+
+      const selectedOption = options.find((item) => item.selected) ?? options[0] ?? { value: "" };
+      inputs.push({
+        tag: "select",
+        name,
+        value: selectedOption.value ?? "",
+        type: "select",
+        checked: false,
+        options,
+      });
     }
 
     forms.push({ id, method, actionUrl, inputs });
@@ -139,7 +265,14 @@ function pickTargetFields(form, queryMode) {
 function buildFormData(form, queryMode, queryValue) {
   const params = new URLSearchParams();
   for (const input of form.inputs) {
-    if (input.type === "hidden") params.set(input.name, input.value ?? "");
+    if (!input?.name) continue;
+    if (input.type === "submit" || input.type === "button" || input.type === "image" || input.type === "file") {
+      continue;
+    }
+    if ((input.type === "checkbox" || input.type === "radio") && !input.checked) {
+      continue;
+    }
+    params.set(input.name, input.value ?? "");
   }
 
   const targetFields = pickTargetFields(form, queryMode);
@@ -187,9 +320,29 @@ function parseProcessesFromHtml(html, tribunalId, sourceUrl) {
   return processes;
 }
 
-async function fetchHtml(url, timeoutMs) {
-  const response = await fetchWithTimeout(url, timeoutMs, { headers: DEFAULT_HEADERS });
+async function fetchHtmlWithSession(url, timeoutMs, session, refererUrl = "") {
+  const cookieHeader = buildCookieHeader(session);
+  const headers = {
+    ...DEFAULT_HEADERS,
+    ...(cookieHeader ? { cookie: cookieHeader } : {}),
+    ...(refererUrl ? { referer: refererUrl } : {}),
+  };
+  if (refererUrl) {
+    try {
+      headers.origin = new URL(refererUrl).origin;
+    } catch {
+      // ignore invalid referer
+    }
+  }
+
+  const response = await fetchWithTimeout(url, timeoutMs, {
+    headers,
+    redirect: "follow",
+  });
   if (!response) return { ok: false, status: 0, reason: "timeout_or_network", url, html: "" };
+
+  storeResponseCookies(session, response);
+
   if (!response.ok) return { ok: false, status: response.status, reason: `http_${response.status}`, url: response.url ?? url, html: "" };
   const html = await response.text().catch(() => "");
   return {
@@ -201,8 +354,11 @@ async function fetchHtml(url, timeoutMs) {
   };
 }
 
-async function submitForm({ form, timeoutMs, queryMode, queryValue }) {
+async function submitForm({ form, timeoutMs, queryMode, queryValue, session, refererUrl, fieldOverrides = {} }) {
   const params = buildFormData(form, queryMode, queryValue);
+  for (const [key, value] of Object.entries(fieldOverrides ?? {})) {
+    params.set(key, value == null ? "" : String(value));
+  }
   const method = form.method === "get" ? "GET" : "POST";
   let requestUrl = form.actionUrl;
   let body = undefined;
@@ -215,15 +371,29 @@ async function submitForm({ form, timeoutMs, queryMode, queryValue }) {
     body = params.toString();
   }
 
+  const cookieHeader = buildCookieHeader(session);
+  const headers = {
+    ...DEFAULT_HEADERS,
+    ...(method === "POST" ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
+    ...(cookieHeader ? { cookie: cookieHeader } : {}),
+    ...(refererUrl ? { referer: refererUrl } : {}),
+  };
+  if (refererUrl) {
+    try {
+      headers.origin = new URL(refererUrl).origin;
+    } catch {
+      // ignore invalid referer
+    }
+  }
+
   const response = await fetchWithTimeout(requestUrl, timeoutMs, {
     method,
-    headers: {
-      ...DEFAULT_HEADERS,
-      ...(method === "POST" ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
-    },
+    headers,
     body,
+    redirect: "follow",
   });
   if (!response) return { ok: false, reason: "timeout_or_network", html: "", status: 0, url: requestUrl };
+  storeResponseCookies(session, response);
   if (!response.ok) return { ok: false, reason: `http_${response.status}`, html: "", status: response.status, url: response.url ?? requestUrl };
   const html = await response.text().catch(() => "");
   return { ok: true, reason: "ok", html, status: response.status, url: response.url ?? requestUrl };
@@ -272,15 +442,14 @@ function buildPjeCandidates(tribunalId) {
 
 function buildEprocCandidates(tribunalId) {
   const base = EPROC_BASE_BY_TRIBUNAL[tribunalId] ?? `https://eproc.${tribunalId}.jus.br/eproc`;
-  return [
-    `${base}/externo_controlador.php?acao=processo_consulta_publica`,
-    `${base}/`,
-  ];
+  return [`${base}/externo_controlador.php?acao=processo_consulta_publica`];
 }
 
 function buildProjudiCandidates(tribunalId) {
   const host = tribunalId === "tjpr" ? "projudi.tjpr.jus.br" : `projudi.${tribunalId}.jus.br`;
   return [
+    `https://${host}/projudi_consulta/processo/consultaPublica.do?actionType=iniciar`,
+    `https://${host}/projudi_consulta/`,
     `https://${host}/projudi/consultaPublica.do?actionType=iniciar`,
     `https://${host}/projudi/`,
   ];
@@ -395,9 +564,11 @@ export async function runGenericTribunalConnector({
   let triedSubmission = false;
   let observedCaptcha = false;
   let observedLogin = false;
+  const validationErrorsSeen = [];
 
   for (const candidate of candidates) {
-    const page = await fetchHtml(candidate, timeoutMs);
+    const session = createHttpSession();
+    const page = await fetchHtmlWithSession(candidate, timeoutMs, session);
     if (!page.ok) {
       lastUnavailableReason = page.reason;
       continue;
@@ -411,6 +582,30 @@ export async function runGenericTribunalConnector({
     }
     if (isLoginPage(page.html)) {
       observedLogin = true;
+    }
+    if (isAccessBlockedPage(page.html, page.status)) {
+      return {
+        connectorFamily,
+        queryMode,
+        status: "unavailable",
+        statusReason: "access_blocked",
+        latencyMs: Date.now() - startedAt,
+        message: "Portal bloqueou o acesso da automação para consulta pública",
+        evidence: [],
+        processes: [],
+      };
+    }
+    if (isPublicSearchDisabledPage(page.html)) {
+      return {
+        connectorFamily,
+        queryMode,
+        status: "unavailable",
+        statusReason: "public_query_disabled",
+        latencyMs: Date.now() - startedAt,
+        message: "Portal informa que a consulta pública está desativada",
+        evidence: [],
+        processes: [],
+      };
     }
 
     const forms = parseForms(page.html, page.url).filter((form) => Array.isArray(form.inputs) && form.inputs.length > 0);
@@ -440,57 +635,104 @@ export async function runGenericTribunalConnector({
       const targetFields = pickTargetFields(form, queryMode);
       if (targetFields.length === 0) continue;
 
-      triedSubmission = true;
-      const submit = await submitForm({
-        form,
-        timeoutMs,
-        queryMode,
-        queryValue: valid.value,
-      });
-      if (!submit.ok) {
-        lastUnavailableReason = submit.reason;
-        continue;
-      }
+      const queryScopeVariants = (() => {
+        const values = Array.from(
+          new Set(
+            form.inputs
+              .filter((item) => item.type === "radio" && item.name === "opcaoConsultaPublica")
+              .map((item) => String(item.value ?? "").trim())
+              .filter(Boolean),
+          ),
+        ).slice(0, 3);
+        if (values.length === 0) return [{}];
+        return values.map((value) => ({ opcaoConsultaPublica: value }));
+      })();
 
-      if (isCaptchaPage(submit.html)) observedCaptcha = true;
-      if (isLoginPage(submit.html)) observedLogin = true;
-      const processes = parseProcessesFromHtml(submit.html, tribunalId, submit.url);
-      if (processes.length > 0) {
-        return {
-          connectorFamily,
+      for (const fieldOverrides of queryScopeVariants) {
+        triedSubmission = true;
+        const submit = await submitForm({
+          form,
+          timeoutMs,
           queryMode,
-          status: "success",
-          statusReason: "match_found",
-          latencyMs: Date.now() - startedAt,
-          message: `Consulta pública retornou ${processes.length} processo(s)`,
-          evidence: [],
-          processes,
-        };
-      }
+          queryValue: valid.value,
+          session,
+          refererUrl: page.url,
+          fieldOverrides,
+        });
+        if (!submit.ok) {
+          lastUnavailableReason = submit.reason;
+          continue;
+        }
 
-      if (/nenhum resultado|nenhum processo|não foram encontrados|nao foram encontrados/i.test(submit.html)) {
-        return {
-          connectorFamily,
-          queryMode,
-          status: "not_found",
-          statusReason: "not_listed",
-          latencyMs: Date.now() - startedAt,
-          message: "Consulta concluída sem registros",
-          evidence: [],
-          processes: [],
-        };
+        if (isCaptchaPage(submit.html)) observedCaptcha = true;
+        if (isLoginPage(submit.html)) observedLogin = true;
+        if (isAccessBlockedPage(submit.html, submit.status)) {
+          return {
+            connectorFamily,
+            queryMode,
+            status: "unavailable",
+            statusReason: "access_blocked",
+            latencyMs: Date.now() - startedAt,
+            message: "Portal bloqueou o acesso da automação para consulta pública",
+            evidence: [],
+            processes: [],
+          };
+        }
+        if (isPublicSearchDisabledPage(submit.html)) {
+          return {
+            connectorFamily,
+            queryMode,
+            status: "unavailable",
+            statusReason: "public_query_disabled",
+            latencyMs: Date.now() - startedAt,
+            message: "Portal informa que a consulta pública está desativada",
+            evidence: [],
+            processes: [],
+          };
+        }
+
+        const validationErrors = parseValidationErrors(submit.html);
+        if (validationErrors.length > 0) {
+          validationErrorsSeen.push(...validationErrors);
+        }
+        const processes = parseProcessesFromHtml(submit.html, tribunalId, submit.url);
+        if (processes.length > 0) {
+          return {
+            connectorFamily,
+            queryMode,
+            status: "success",
+            statusReason: "match_found",
+            latencyMs: Date.now() - startedAt,
+            message: `Consulta pública retornou ${processes.length} processo(s)`,
+            evidence: [],
+            processes,
+          };
+        }
+
+        if (hasNoResultsMarker(submit.html) && validationErrors.length === 0) {
+          return {
+            connectorFamily,
+            queryMode,
+            status: "not_found",
+            statusReason: "not_listed",
+            latencyMs: Date.now() - startedAt,
+            message: "Consulta concluída sem registros",
+            evidence: [],
+            processes: [],
+          };
+        }
       }
     }
   }
 
-  if (triedSubmission) {
+  if (validationErrorsSeen.length > 0) {
     return {
       connectorFamily,
       queryMode,
-      status: "not_found",
-      statusReason: "not_listed",
+      status: "unavailable",
+      statusReason: "form_validation_blocked",
       latencyMs: Date.now() - startedAt,
-      message: "Consulta executada sem retorno de processos para a entidade",
+      message: `Formulário rejeitou a submissão: ${validationErrorsSeen[0]}`,
       evidence: [],
       processes: [],
     };
@@ -504,6 +746,19 @@ export async function runGenericTribunalConnector({
       statusReason: "captcha_blocked",
       latencyMs: Date.now() - startedAt,
       message: "Consulta pública bloqueada por captcha/validação humana",
+      evidence: [],
+      processes: [],
+    };
+  }
+
+  if (triedSubmission) {
+    return {
+      connectorFamily,
+      queryMode,
+      status: "not_found",
+      statusReason: "not_listed",
+      latencyMs: Date.now() - startedAt,
+      message: "Consulta executada sem retorno de processos para a entidade",
       evidence: [],
       processes: [],
     };
@@ -526,8 +781,8 @@ export async function runGenericTribunalConnector({
     return {
       connectorFamily,
       queryMode,
-      status: "not_found",
-      statusReason: "not_listed",
+      status: "unavailable",
+      statusReason: "no_automatable_form",
       latencyMs: Date.now() - startedAt,
       message: "Página pública alcançada, porém sem formulário de busca automatizável",
       evidence: [],
@@ -546,4 +801,3 @@ export async function runGenericTribunalConnector({
     processes: [],
   };
 }
-
