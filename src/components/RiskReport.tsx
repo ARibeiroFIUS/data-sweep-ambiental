@@ -10,6 +10,7 @@ import { DataSourcesList } from "@/components/DataSourcesList";
 import { AiAnalysisSection } from "@/components/AiAnalysisSection";
 import { EntityGraphSection } from "@/components/EntityGraphSection";
 import { DatajudSection } from "@/components/DatajudSection";
+import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type {
   InvestigationEventsResponse,
   InvestigationGraphResponse,
@@ -38,6 +39,14 @@ const riskBadgeColors: Record<string, string> = {
   Médio: "bg-risk-medium/10 text-risk-medium",
   Alto: "bg-risk-high/10 text-risk-high",
   Crítico: "bg-risk-critical/10 text-risk-critical",
+};
+
+const subscoreLabels: Record<string, string> = {
+  score_integridade: "Integridade",
+  score_judicial: "Judicial",
+  score_trabalhista: "Trabalhista/ESG",
+  score_financeiro: "Financeiro",
+  score_rede: "Rede societária",
 };
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
@@ -288,6 +297,82 @@ export function RiskReport({ data, onBack }: RiskReportProps) {
           )}
         </div>
       </div>
+
+      {(data.subscores || data.score_explanation?.top_risks?.length || data.meta?.score_trend || data.meta?.peer_benchmark) && (
+        <div className="glass-card p-6 space-y-5">
+          <h2 className="text-lg font-semibold">Painel Analítico</h2>
+
+          {data.subscores && (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {Object.entries(data.subscores).map(([key, dim]) => (
+                <div key={key} className="rounded-lg border border-border/60 p-3 bg-secondary/20">
+                  <p className="text-xs text-muted-foreground">{subscoreLabels[key] ?? key}</p>
+                  <p className="text-lg font-semibold mt-1">{dim.score}</p>
+                  <p className="text-xs mt-1">
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded ${riskBadgeColors[dim.classification] ?? "bg-muted text-muted-foreground"}`}>
+                      {dim.classification}
+                    </span>
+                    <span className="text-muted-foreground ml-2">{dim.flag_count} flag(s)</span>
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {data.score_explanation?.top_risks?.length ? (
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium">Top fatores que mais pesaram no score</h3>
+              <div className="space-y-1">
+                {data.score_explanation.top_risks.map((item) => (
+                  <p key={`${item.id}-${item.title}`} className="text-sm text-muted-foreground">
+                    <span className="text-foreground font-medium">{item.title}</span>{" "}
+                    <span className="text-xs">(+{item.effective_weight} pts)</span>
+                  </p>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {data.meta?.score_trend?.points && data.meta.score_trend.points.length > 1 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium">Tendência de score</h3>
+                <p className="text-xs text-muted-foreground">
+                  30d: {data.meta.score_trend.delta_30d >= 0 ? "+" : ""}
+                  {data.meta.score_trend.delta_30d} | 90d: {data.meta.score_trend.delta_90d >= 0 ? "+" : ""}
+                  {data.meta.score_trend.delta_90d} | {data.meta.score_trend.trend}
+                </p>
+              </div>
+              <div className="h-44 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={data.meta.score_trend.points.map((p) => ({
+                      score: p.score,
+                      label: new Date(p.analyzed_at).toLocaleDateString("pt-BR"),
+                    }))}
+                    margin={{ top: 8, right: 8, left: -20, bottom: 0 }}
+                  >
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                    <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="score" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 2 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {data.meta?.peer_benchmark && (
+            <div className="rounded-lg border border-border/60 p-3 bg-secondary/20">
+              <p className="text-sm text-muted-foreground">
+                Benchmark CNAE <span className="font-medium text-foreground">{data.meta.peer_benchmark.cnae}</span>: top{" "}
+                <span className="font-semibold text-foreground">{data.meta.peer_benchmark.top_risk_percent}%</span> de risco em{" "}
+                <span className="font-semibold text-foreground">{data.meta.peer_benchmark.sample_size}</span> empresa(s) do segmento.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Company Info */}
       <CompanyInfoGrid company={data.company} />

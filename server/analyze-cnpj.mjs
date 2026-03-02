@@ -5,13 +5,14 @@ import {
   mapWithConcurrency,
   normalizePersonName,
   parseDelimitedLine,
+  parseBooleanEnv,
   resolveHeaderIndexAny,
   toNumber,
 } from "./common-utils.mjs";
 import { fetchWithTimeout } from "./http-utils.mjs";
 import { getIndexedSourceMatch, getLatestSnapshotAt, isSourceIndexStoreEnabled } from "./source-index-store.mjs";
 import { getSourceConfig, isSourceEnabled, PGFN_SOURCE_IDS, SOURCES_VERSION } from "./source-registry.mjs";
-import { calculateScore } from "./risk-scoring.mjs";
+import { calculateScore, calculateSubscores } from "./risk-scoring.mjs";
 import { calculateDisambiguationScore, applyConvergenceBonus } from "./disambiguation-engine.mjs";
 import { generateIntelligenceReport } from "./ai-synthesis.mjs";
 import { enqueueDeepInvestigation } from "./investigation-orchestrator.mjs";
@@ -697,6 +698,67 @@ async function queryMTETrabalhoEscravo(cnpj) {
   });
 }
 
+async function queryMTEAutuacoes(cnpj) {
+  const result = await queryCGUByCnpj("mte_autuacoes", "autos-de-infracao", "cnpjEstabelecimento", cnpj);
+  if (result.source.status !== "success") return { source: result.source, flags: [] };
+
+  const records = Array.isArray(result.data) ? result.data : [];
+  if (records.length === 0) return { source: result.source, flags: [] };
+
+  const sampleRecord = records[0];
+
+  // Detectar embargos de obra (gravidade maior)
+  const embargos = records.filter((r) => {
+    const tipo = String(
+      r.tipoAcao?.descricao ?? r.tipoInfracao?.descricao ?? r.enquadramento ?? "",
+    ).toLowerCase();
+    return tipo.includes("embargo") || tipo.includes("interdi");
+  });
+
+  const flags = [];
+
+  if (embargos.length > 0) {
+    flags.push(withVerificationStatus({
+      id: "mte_embargo_obra",
+      source_id: "mte_autuacoes",
+      source: "MTE — Autos de Infração",
+      severity: "high",
+      title: `Empresa com ${embargos.length} embargo(s)/interdição(ões) MTE`,
+      description: `Foram encontrados ${embargos.length} ato(s) de embargo ou interdição de obra pelo MTE. Indica violação grave de norma de segurança do trabalho.`,
+      weight: 20,
+      evidence: [
+        { label: "Embargos/interdições", value: String(embargos.length) },
+        ...(embargos[0]?.tipoAcao?.descricao ? [{ label: "Tipo", value: embargos[0].tipoAcao.descricao }] : []),
+        ...(embargos[0]?.dataDecisao ? [{ label: "Data", value: embargos[0].dataDecisao }] : []),
+      ],
+    }));
+  }
+
+  const regularCount = records.length - embargos.length;
+  if (regularCount > 0) {
+    const totalMulta = records.reduce((s, r) => s + (Number(r.valorMulta) || 0), 0);
+    flags.push(withVerificationStatus({
+      id: "mte_autuacao_trabalhista",
+      source_id: "mte_autuacoes",
+      source: "MTE — Autos de Infração",
+      severity: records.length >= 5 ? "high" : "medium",
+      title: `Empresa com ${records.length} autuação(ões) trabalhista(s) no MTE`,
+      description: `Foram encontradas ${records.length} autuação(ões) trabalhistas registradas no Portal da Transparência (MTE). Indica infrações à CLT ou normas regulamentadoras.`,
+      weight: records.length >= 5 ? 20 : 15,
+      evidence: [
+        { label: "Total de autuações", value: String(records.length) },
+        ...(totalMulta > 0
+          ? [{ label: "Valor de multas (soma)", value: totalMulta.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) }]
+          : []),
+        ...(sampleRecord?.tipoInfracao?.descricao ? [{ label: "Tipo (exemplo)", value: sampleRecord.tipoInfracao.descricao }] : []),
+        ...(sampleRecord?.enquadramento ? [{ label: "Enquadramento (exemplo)", value: String(sampleRecord.enquadramento).slice(0, 80) }] : []),
+      ],
+    }));
+  }
+
+  return { source: result.source, flags };
+}
+
 async function queryPGFNIndexed(sourceId, cnpj, options) {
   return runSourceQuery(sourceId, async (start) => {
     if (!isSourceIndexStoreEnabled()) {
@@ -1221,6 +1283,135 @@ async function analyzePartnerRisk(partnerCnpj) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Agente 2b — Rede societária depth=2 (FEATURE_DEEP_NETWORK=true)
+// Limites: máx 5 nós, 10s/nó, 30s total, contribuição ao score via depth_factor=0.63
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DEEP_NETWORK_MAX_NODES = 5;
+const DEEP_NETWORK_NODE_TIMEOUT_MS = 10_000;
+const DEEP_NETWORK_TOTAL_TIMEOUT_MS = 30_000;
+
+function isDeepNetworkEnabled() {
+  return parseBooleanEnv(process.env.FEATURE_DEEP_NETWORK, false);
+}
+
+/**
+ * Analisa empresas a depth=2 na rede societária.
+ * Recebe os itens de depth=1 (já enriquecidos com risk_score) e:
+ *   1. Busca o QSA de cada depth=1 (prioriza os com maior risco)
+ *   2. Coleta sócios PJ únicos (depth=2), máx DEEP_NETWORK_MAX_NODES
+ *   3. Analisa risco de cada depth=2 via analyzePartnerRisk
+ *   4. Gera flag SOCIO_CENTRAL_REDE quando um sócio aparece em ≥5 empresas
+ *
+ * @param {Array} depth1Items — itens do queryPartnerCompaniesByCnpj
+ * @returns {Promise<Array>} flags com depth=2
+ */
+async function analyzeDepth2Network(depth1Items) {
+  if (!Array.isArray(depth1Items) || depth1Items.length === 0) return [];
+
+  const startTotal = Date.now();
+
+  // Prioriza depth=1 com maior risco
+  const sorted = [...depth1Items]
+    .filter((item) => cleanDocument(item?.cnpj ?? "").length === 14)
+    .sort((a, b) => (b.risk_score ?? 0) - (a.risk_score ?? 0));
+
+  // Coleta PJ sócios de cada depth=1 empresa (QSA da BrasilAPI)
+  // Map: cnpj_depth2 → { partnerNames: string[], fromCompanies: string[] }
+  const depth2Map = new Map();
+
+  for (const item of sorted) {
+    if (Date.now() - startTotal >= DEEP_NETWORK_TOTAL_TIMEOUT_MS) break;
+    if (depth2Map.size >= DEEP_NETWORK_MAX_NODES) break;
+
+    try {
+      const controller = new AbortController();
+      const nodeTimer = setTimeout(() => controller.abort(), DEEP_NETWORK_NODE_TIMEOUT_MS);
+
+      const response = await fetch(
+        `https://brasilapi.com.br/api/cnpj/v1/${item.cnpj}`,
+        { signal: controller.signal },
+      );
+
+      clearTimeout(nodeTimer);
+      if (!response.ok) continue;
+
+      const payload = await response.json();
+      const pjSocios = (payload?.qsa ?? []).filter((s) => {
+        const doc = cleanDocument(s?.cnpj_cpf_do_socio ?? "");
+        return doc.length === 14;
+      });
+
+      for (const socio of pjSocios) {
+        if (depth2Map.size >= DEEP_NETWORK_MAX_NODES) break;
+        const doc = cleanDocument(socio.cnpj_cpf_do_socio);
+        if (!depth2Map.has(doc)) {
+          depth2Map.set(doc, { partnerNames: [], fromCompanies: [] });
+        }
+        const meta = depth2Map.get(doc);
+        meta.partnerNames.push(socio.nome ?? "");
+        meta.fromCompanies.push(item.razao_social ?? item.cnpj);
+      }
+    } catch {
+      // fail-open — ignora timeout ou erro de rede
+    }
+  }
+
+  if (depth2Map.size === 0) return [];
+
+  const flags = [];
+
+  // Analisa risco de cada depth=2 CNPJ
+  for (const [cnpj, meta] of depth2Map) {
+    if (Date.now() - startTotal >= DEEP_NETWORK_TOTAL_TIMEOUT_MS) break;
+
+    try {
+      const result = await analyzePartnerRisk(cnpj);
+      for (const flag of result.risk_flags) {
+        flags.push({
+          ...flag,
+          depth: 2,
+          evidence: [
+            ...(Array.isArray(flag.evidence) ? flag.evidence : []),
+            { label: "CNPJ sócio depth=2", value: cnpj },
+            { label: "Via empresa(s) depth=1", value: [...new Set(meta.fromCompanies)].join(", ") },
+          ],
+        });
+      }
+    } catch {
+      // fail-open
+    }
+  }
+
+  // Flag de centralidade: sócio que aparece em ≥5 empresas no conjunto depth=1
+  // (detectado via fromCompanies de múltiplos depth=2 pontos)
+  const centralityCounter = new Map();
+  for (const [cnpj, meta] of depth2Map) {
+    const count = new Set(meta.fromCompanies).size;
+    if (count >= 5) {
+      centralityCounter.set(cnpj, count);
+    }
+  }
+  for (const [cnpj, count] of centralityCounter) {
+    flags.push(withVerificationStatus({
+      id: `socio_central_rede_${cnpj}`,
+      source: "Análise de rede societária (depth=2)",
+      severity: "high",
+      title: "Sócio central em rede societária ampla",
+      description: `Empresa CNPJ ${cnpj} aparece como sócia em ${count} empresas da rede investigada. Padrão típico de estruturas de laranja.`,
+      weight: 25,
+      depth: 2,
+      evidence: [
+        { label: "CNPJ do sócio central", value: cnpj },
+        { label: "Empresas na rede", value: String(count) },
+      ],
+    }));
+  }
+
+  return flags;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DataJud — Processos Judiciais (CNJ)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1233,6 +1424,7 @@ async function queryDatajud(cnpj, company) {
           statusReason: "feature_disabled",
           message: "DataJud desabilitado (FEATURE_DATAJUD=false)",
         }),
+        processes: [],
         flags: [],
       };
     }
@@ -1252,6 +1444,7 @@ async function queryDatajud(cnpj, company) {
           statusReason: result.statusReason ?? result.status,
           message,
         }),
+        processes: [],
         flags: [],
       };
     }
@@ -1360,6 +1553,54 @@ async function queryDatajud(cnpj, company) {
       });
     }
 
+    if (byType.falencia.length > 0) {
+      const sample = byType.falencia[0];
+      const totalValor = byType.falencia.reduce((s, p) => s + (Number(p.valor) || 0), 0);
+      flags.push({
+        id: "datajud_falencia",
+        source_id: "datajud",
+        source: "DataJud (CNJ)",
+        severity: "critical",
+        title: `Empresa com processo de FALÊNCIA`,
+        description:
+          `Foram encontrados ${byType.falencia.length} processo(s) de falência ou insolvência ` +
+          `nos tribunais consultados via DataJud/CNJ. Risco máximo de continuidade operacional.`,
+        weight: 50,
+        evidence: [
+          ...evidenceBase,
+          { label: "Processos de falência", value: String(byType.falencia.length) },
+          ...(totalValor > 0
+            ? [{ label: "Valor total (soma)", value: totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) }]
+            : []),
+          ...processoEvidence(sample),
+        ],
+      });
+    }
+
+    if (byType.recuperacao.length > 0) {
+      const sample = byType.recuperacao[0];
+      const totalValor = byType.recuperacao.reduce((s, p) => s + (Number(p.valor) || 0), 0);
+      flags.push({
+        id: "datajud_recuperacao_judicial",
+        source_id: "datajud",
+        source: "DataJud (CNJ)",
+        severity: "critical",
+        title: `Empresa em RECUPERAÇÃO JUDICIAL`,
+        description:
+          `Foram encontrados ${byType.recuperacao.length} processo(s) de recuperação judicial ` +
+          `nos tribunais consultados via DataJud/CNJ. Alto risco de inadimplência e descontinuidade.`,
+        weight: 40,
+        evidence: [
+          ...evidenceBase,
+          { label: "Processos de recuperação", value: String(byType.recuperacao.length) },
+          ...(totalValor > 0
+            ? [{ label: "Valor total (soma)", value: totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) }]
+            : []),
+          ...processoEvidence(sample),
+        ],
+      });
+    }
+
     if (total > 0 && flags.length === 0) {
       const sample = result.processes[0];
       flags.push({
@@ -1377,6 +1618,28 @@ async function queryDatajud(cnpj, company) {
       });
     }
 
+    // Flag de carga judicial alta: volume elevado de processos de múltiplos tipos
+    if (total >= 20 && flags.length >= 2) {
+      flags.push({
+        id: "datajud_carga_judicial_alta",
+        source_id: "datajud",
+        source: "DataJud (CNJ)",
+        severity: "high",
+        title: `Carga judicial elevada: ${total} processos em múltiplas categorias`,
+        description:
+          `Volume total de ${total} processos judiciais com ocorrências em múltiplas categorias ` +
+          `(criminal, fiscal, trabalhista). Indicativo de litigiosidade sistêmica.`,
+        weight: 10,
+        evidence: [
+          ...evidenceBase,
+          { label: "Criminais", value: String(byType.criminal.length) },
+          { label: "Fiscais", value: String(byType.fiscal.length) },
+          { label: "Trabalhistas", value: String(byType.trabalhista.length) },
+          { label: "Cíveis/outros", value: String(byType.civil.length + byType.outro.length) },
+        ],
+      });
+    }
+
     return {
       source: buildSourceStatus("datajud", total > 0 ? "success" : "not_found", {
         latencyMs: Date.now() - start,
@@ -1389,9 +1652,27 @@ async function queryDatajud(cnpj, company) {
       }),
       flags,
       // Processos estruturados — passados via spread para o retorno da API
-      processes: result.processes ?? [],
+      processes: (result.processes ?? []).map((process) => ({
+        ...process,
+        tipo: classifyProcesso(process),
+        classe_cnj: process?.classe?.codigo ?? null,
+        assunto_cnj:
+          Array.isArray(process?.assuntos) && process.assuntos.length > 0
+            ? process.assuntos[0]?.codigo ?? null
+            : null,
+        valor_causa: process?.valor ?? null,
+        data_distribuicao: process?.dataAjuizamento ?? null,
+        polo_ativo_nome:
+          Array.isArray(process?.partes)
+            ? (process.partes.find((item) => String(item?.polo ?? "").toLowerCase().includes("ativo"))?.nome ?? null)
+            : null,
+      })),
     };
   });
+}
+
+function isSyncDatajudEnabled() {
+  return parseBooleanEnv(process.env.FEATURE_DATAJUD_SYNC_ANALYZE, true);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1697,6 +1978,7 @@ export async function analyzeCnpj(cnpj) {
     cepimResult,
     tcuResult,
     mteResult,
+    mteAutuacoesResult,
     pgfnFgtsResult,
     pgfnPrevidResult,
     pgfnNpResult,
@@ -1708,6 +1990,7 @@ export async function analyzeCnpj(cnpj) {
     queryCEPIM(cleanCnpj),
     queryTCULicitantes(cleanCnpj),
     queryMTETrabalhoEscravo(cleanCnpj),
+    queryMTEAutuacoes(cleanCnpj),
     queryPGFNIndexed("pgfn_fgts", cleanCnpj, {
       flagId: "pgfn_fgts_divida_ativa",
       severity: "medium",
@@ -1759,6 +2042,7 @@ export async function analyzeCnpj(cnpj) {
     cepimResult,
     tcuResult,
     mteResult,
+    mteAutuacoesResult,
     pgfnFgtsResult,
     pgfnPrevidResult,
     pgfnNpResult,
@@ -1792,8 +2076,10 @@ export async function analyzeCnpj(cnpj) {
       partner_name: p.nome,
     }));
 
-  // Agentes 2, 3 (completo e por nome), CEAF, Servidores e TCU Eleitoral — em paralelo
-  const [eleitoralResult, ceafResult, servidoresResult, partnerCompanies, pfNameResultsAll] =
+  const shouldRunDatajudSync = isSyncDatajudEnabled() && isDatajudEnabled();
+
+  // Agentes 2, 3 (completo e por nome), CEAF, Servidores, TCU Eleitoral e DataJud — em paralelo
+  const [eleitoralResult, ceafResult, servidoresResult, partnerCompanies, pfNameResultsAll, datajudResult] =
     await Promise.all([
       queryTCUEleitoral(company.qsa),
       queryCEAF(company.qsa),
@@ -1804,11 +2090,16 @@ export async function analyzeCnpj(cnpj) {
           queryPFByName(profile).catch(() => ({ matches: [] })),
         ),
       ),
+      shouldRunDatajudSync ? queryDatajud(cleanCnpj, company) : Promise.resolve(null),
     ]);
 
   for (const result of [eleitoralResult, ceafResult, servidoresResult]) {
     sources.push(result.source);
     flags.push(...result.flags.map(withVerificationStatus));
+  }
+  if (datajudResult) {
+    sources.push(datajudResult.source);
+    flags.push(...(Array.isArray(datajudResult.flags) ? datajudResult.flags : []).map(withVerificationStatus));
   }
 
   // Processa resultados de nome de sócios PF mascarados (Agente 3)
@@ -1854,7 +2145,15 @@ export async function analyzeCnpj(cnpj) {
   const networkFlags = detectNetworkPatterns(company, partnerCompanies);
   flags.push(...networkFlags.map(withVerificationStatus));
 
-  const { score, classification } = calculateScore(flags);
+  // Agente 2b — Rede societária depth=2 (opcional, FEATURE_DEEP_NETWORK=true)
+  if (isDeepNetworkEnabled()) {
+    const depth2Flags = await analyzeDepth2Network(partnerCompanies?.items ?? []);
+    flags.push(...depth2Flags.map(withVerificationStatus));
+  }
+
+  const { score, classification, top_risks } = calculateScore(flags);
+  const subscores = calculateSubscores(flags);
+  const score_explanation = { top_risks };
   const summary = generateSummary(classification, flags, company.razao_social);
   const partial = sources.some((source) => source.status === "error" || source.status === "unavailable");
 
@@ -1908,6 +2207,8 @@ export async function analyzeCnpj(cnpj) {
       sources,
       score,
       classification,
+      subscores,
+      score_explanation,
       partnerCompanies,
       pfPartnerResults,
     }).catch((e) => {
@@ -1921,20 +2222,22 @@ export async function analyzeCnpj(cnpj) {
     };
   }
 
-  sources.push(
-    buildSourceStatus(
-      "datajud",
-      deepInvestigation.run_id ? "running" : "unavailable",
-      {
-        latencyMs: 0,
-        evidenceCount: 0,
-        statusReason: deepInvestigation.run_id ? "deferred_to_crawler" : "not_scheduled",
-        message: deepInvestigation.run_id
-          ? `DataJud será executado apenas para enriquecer processos já encontrados no crawler (run_id: ${deepInvestigation.run_id})`
-          : "DataJud é executado apenas após processos encontrados no crawler",
-      },
-    ),
-  );
+  if (!datajudResult) {
+    sources.push(
+      buildSourceStatus(
+        "datajud",
+        deepInvestigation.run_id ? "running" : "unavailable",
+        {
+          latencyMs: 0,
+          evidenceCount: 0,
+          statusReason: deepInvestigation.run_id ? "deferred_to_crawler" : "not_scheduled",
+          message: deepInvestigation.run_id
+            ? `DataJud será executado para enriquecimento via crawler (run_id: ${deepInvestigation.run_id})`
+            : "DataJud não executado nesta etapa",
+        },
+      ),
+    );
+  }
 
   sources.push(
     buildSourceStatus(
@@ -1955,6 +2258,8 @@ export async function analyzeCnpj(cnpj) {
     company,
     score,
     classification,
+    subscores,
+    score_explanation,
     flags,
     sources,
     summary,
@@ -1967,7 +2272,7 @@ export async function analyzeCnpj(cnpj) {
       judicial_scan: judicialScan,
     },
     ai_analysis: aiAnalysis,
-    judicial_processes: [],
+    judicial_processes: Array.isArray(datajudResult?.processes) ? datajudResult.processes : [],
     related_entities: {
       partner_companies: partnerCompanies,
       graph: deepInvestigation.run_id

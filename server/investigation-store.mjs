@@ -37,6 +37,12 @@ function normalizeCpf(value) {
     .slice(0, 11);
 }
 
+function normalizeCnae(value) {
+  return String(value ?? "")
+    .replace(/\D/g, "")
+    .slice(0, 7);
+}
+
 export function isInvestigationStoreEnabled() {
   return Boolean(DATABASE_URL);
 }
@@ -512,6 +518,161 @@ export async function closeInvestigationStore() {
   if (!pool) return;
   await pool.end();
   pool = null;
+}
+
+export async function ensureScoreHistoryTable() {
+  const activePool = getPool();
+  if (!activePool) return false;
+
+  await activePool.query(`
+    CREATE TABLE IF NOT EXISTS cnpj_score_history (
+      id              BIGSERIAL PRIMARY KEY,
+      cnpj            CHAR(14)      NOT NULL,
+      cnae            CHAR(7),
+      score           INTEGER       NOT NULL,
+      classification  TEXT,
+      subscores_json  JSONB,
+      analyzed_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+      search_id       UUID,
+      created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await activePool.query(
+    `CREATE INDEX IF NOT EXISTS idx_cnpj_score_history_cnpj_analyzed_at
+       ON cnpj_score_history (cnpj, analyzed_at DESC)`,
+  );
+  await activePool.query(
+    `CREATE INDEX IF NOT EXISTS idx_cnpj_score_history_cnae_analyzed_at
+       ON cnpj_score_history (cnae, analyzed_at DESC)`,
+  );
+
+  return true;
+}
+
+export async function insertScoreHistory(input) {
+  const activePool = getPool();
+  if (!activePool) return null;
+
+  const cnpj = normalizeCnpj(input?.cnpj);
+  if (cnpj.length !== 14) return null;
+
+  const cnae = normalizeCnae(input?.cnae);
+  const score = Number(input?.score ?? 0);
+  if (!Number.isFinite(score)) return null;
+
+  try {
+    const { rows } = await activePool.query(
+      `INSERT INTO cnpj_score_history (
+         cnpj, cnae, score, classification, subscores_json, analyzed_at, search_id
+       ) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+       RETURNING id, cnpj, cnae, score, classification, subscores_json, analyzed_at, search_id, created_at`,
+      [
+        cnpj,
+        cnae.length === 7 ? cnae : null,
+        Math.max(0, Math.min(100, Math.round(score))),
+        input?.classification ?? null,
+        JSON.stringify(input?.subscores ?? null),
+        input?.analyzedAt ? new Date(input.analyzedAt) : new Date(),
+        input?.searchId ?? null,
+      ],
+    );
+    return rows[0] ?? null;
+  } catch (error) {
+    if (isMissingSchemaError(error)) return null;
+    throw error;
+  }
+}
+
+export async function listScoreHistoryByCnpj(cnpj, { limit = 6 } = {}) {
+  const activePool = getPool();
+  if (!activePool) return [];
+
+  const normalized = normalizeCnpj(cnpj);
+  if (normalized.length !== 14) return [];
+
+  const cappedLimit = Math.max(1, Math.min(120, Number.parseInt(String(limit), 10) || 6));
+
+  try {
+    const { rows } = await activePool.query(
+      `SELECT cnpj, cnae, score, classification, subscores_json, analyzed_at, search_id
+         FROM cnpj_score_history
+        WHERE cnpj = $1
+        ORDER BY analyzed_at DESC
+        LIMIT $2`,
+      [normalized, cappedLimit],
+    );
+    return rows;
+  } catch (error) {
+    if (isMissingSchemaError(error)) return [];
+    throw error;
+  }
+}
+
+export async function getFirstScoreSince(cnpj, days = 90) {
+  const activePool = getPool();
+  if (!activePool) return null;
+
+  const normalized = normalizeCnpj(cnpj);
+  if (normalized.length !== 14) return null;
+
+  const safeDays = Math.max(1, Math.min(3650, Number.parseInt(String(days), 10) || 90));
+
+  try {
+    const { rows } = await activePool.query(
+      `SELECT cnpj, score, classification, analyzed_at, search_id
+         FROM cnpj_score_history
+        WHERE cnpj = $1
+          AND analyzed_at >= NOW() - ($2 || ' days')::interval
+        ORDER BY analyzed_at ASC
+        LIMIT 1`,
+      [normalized, safeDays],
+    );
+    return rows[0] ?? null;
+  } catch (error) {
+    if (isMissingSchemaError(error)) return null;
+    throw error;
+  }
+}
+
+export async function getPeerBenchmarkForCnae(cnae, score, { minSample = 50 } = {}) {
+  const activePool = getPool();
+  if (!activePool) return null;
+
+  const normalizedCnae = normalizeCnae(cnae);
+  const normalizedScore = Number(score ?? 0);
+  if (normalizedCnae.length !== 7 || !Number.isFinite(normalizedScore)) return null;
+
+  const min = Math.max(1, Number.parseInt(String(minSample), 10) || 50);
+
+  try {
+    const { rows } = await activePool.query(
+      `SELECT
+         COUNT(*)::int AS total,
+         COUNT(*) FILTER (WHERE score >= $2)::int AS rank_worse_or_equal,
+         ROUND(AVG(score)::numeric, 2) AS avg_score
+       FROM cnpj_score_history
+       WHERE cnae = $1`,
+      [normalizedCnae, Math.round(normalizedScore)],
+    );
+
+    const total = Number(rows[0]?.total ?? 0) || 0;
+    if (total < min) return null;
+
+    const rankWorseOrEqual = Number(rows[0]?.rank_worse_or_equal ?? 0) || 0;
+    const topRiskPercent = Math.max(0, Math.min(100, (rankWorseOrEqual / Math.max(1, total)) * 100));
+
+    return {
+      cnae: normalizedCnae,
+      sample_size: total,
+      avg_score: Number(rows[0]?.avg_score ?? 0) || 0,
+      rank_worse_or_equal: rankWorseOrEqual,
+      top_risk_percent: Math.round(topRiskPercent * 10) / 10,
+    };
+  } catch (error) {
+    if (isMissingSchemaError(error)) return null;
+    throw error;
+  }
 }
 
 export async function upsertTribunalCatalog(entries) {

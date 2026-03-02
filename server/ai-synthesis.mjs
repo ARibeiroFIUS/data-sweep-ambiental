@@ -25,15 +25,16 @@ Sua função é analisar os dados fornecidos e produzir um laudo investigativo o
 FORMATO OBRIGATÓRIO — responda EXATAMENTE com estas 3 seções, usando os títulos exatamente como abaixo:
 
 ## RESUMO EXECUTIVO
-(2-3 parágrafos: avaliação do risco geral, principais achados relevantes, recomendação final clara)
+(2-3 parágrafos: avaliação do risco geral, principais achados relevantes, recomendação final clara.
+Mencione os subscores mais elevados e os top fatores de risco quando disponíveis.)
 
 ## ANÁLISE DETALHADA
 (Por categoria de risco — mencione APENAS categorias com achados concretos):
-- Sanções e impedimentos (CEIS, CNEP, CEAF, CEPIM)
-- Dívidas fiscais (PGFN, Dívida Ativa)
-- Trabalho escravo / trabalhista
-- Vínculos societários problemáticos (sócios com sanções, servidores públicos, ex-candidatos)
-- Padrões estruturais suspeitos (empresa recente, mesmo endereço, capital mínimo)
+- Integridade / Sanções (CEIS, CNEP, CEAF, CEPIM, TCU, CVM, BACEN)
+- Judicial (processos criminais, execuções fiscais, falência, recuperação judicial via DataJud/CNJ)
+- Financeiro (dívida ativa PGFN, protestos, inadimplência)
+- Trabalhista / ESG (MTE, trabalho escravo, autuações, passivos trabalhistas)
+- Rede societária (sócios com sanções, padrões estruturais suspeitos, profundidade da rede)
 
 ## RECOMENDAÇÕES
 (Lista priorizada de ações específicas — seja direto e objetivo)
@@ -51,7 +52,7 @@ INSTRUÇÕES:
  * Formata os dados da empresa para o prompt.
  */
 function buildPrompt(synthesisInput) {
-  const { company, flags, sources, score, classification, partnerCompanies, pfPartnerResults } =
+  const { company, flags, sources, score, classification, subscores, score_explanation, peer_benchmark, partnerCompanies, pfPartnerResults } =
     synthesisInput;
 
   const lines = [];
@@ -72,8 +73,39 @@ function buildPrompt(synthesisInput) {
 
   // ── Score ─────────────────────────────────────────────────────────────────
   lines.push(`# SCORE DE RISCO`);
-  lines.push(`Score: ${score} / 100`);
-  lines.push(`Classificação: ${classification}`);
+  lines.push(`Score total: ${score} / 100 — ${classification}`);
+
+  if (subscores) {
+    lines.push("Subscores por categoria:");
+    const dimLabels = {
+      score_integridade: "Integridade/Sanções",
+      score_judicial: "Judicial",
+      score_trabalhista: "Trabalhista/ESG",
+      score_financeiro: "Financeiro/Solvência",
+      score_rede: "Rede societária",
+    };
+    for (const [key, label] of Object.entries(dimLabels)) {
+      const dim = subscores[key];
+      if (dim) {
+        lines.push(`  ${label}: ${dim.score}/100 (${dim.classification}) — ${dim.flag_count} flag(s)`);
+      }
+    }
+  }
+
+  if (score_explanation?.top_risks?.length > 0) {
+    lines.push("Top fatores de risco:");
+    for (const r of score_explanation.top_risks) {
+      lines.push(`  1. ${r.title} (+${r.effective_weight}pts efetivos) [flag_id=${r.id}]`);
+    }
+  }
+
+  if (peer_benchmark?.sample_size && peer_benchmark?.top_risk_percent != null) {
+    lines.push(
+      `Benchmark CNAE ${peer_benchmark.cnae}: top ${peer_benchmark.top_risk_percent}% de risco ` +
+      `em amostra de ${peer_benchmark.sample_size} empresa(s) (média do segmento: ${peer_benchmark.avg_score}).`,
+    );
+  }
+
   lines.push("");
 
   // ── QSA ──────────────────────────────────────────────────────────────────

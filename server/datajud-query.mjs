@@ -72,12 +72,24 @@ const CRIMINAL_KEYWORDS = /criminal|penal|improbidade|fraude|corrupção|estelio
 const FISCAL_KEYWORDS = /execução fiscal|dívida ativa|fazenda|tributária|tributário/i;
 const LABOR_KEYWORDS = /trabalhista|reclamação|rescisão|trabalho|trt|empregado|FGTS|verbas/i;
 const CIVIL_KEYWORDS = /indenização|cobrança|monitória|despejo|contrato|civil/i;
+const FALENCIA_KEYWORDS = /falência|falencia|insolvência|insolvencia|concordata/i;
+const RECUPERACAO_KEYWORDS = /recuperação judicial|recuperacao judicial|reestruturação/i;
+
+// Códigos de classe CNJ para falência e recuperação judicial (tabelas CNJ oficiais)
+const FALENCIA_CLASS_CODES = new Set([1111, 1113, 2687, 1116]);
+const RECUPERACAO_CLASS_CODES = new Set([1112, 1114, 2685, 2686, 1115]);
 
 function classifyProcesso(processo) {
+  const classeNome = processo.classe?.nome ?? "";
+  const classeCodigo = Number(processo.classe?.codigo ?? 0);
   const text = [
-    processo.classe?.nome ?? "",
+    classeNome,
     ...(Array.isArray(processo.assuntos) ? processo.assuntos.map((a) => a.nome ?? "") : []),
   ].join(" ");
+
+  // Falência e recuperação judicial têm prioridade máxima — sinais de insolvência
+  if (FALENCIA_CLASS_CODES.has(classeCodigo) || FALENCIA_KEYWORDS.test(text)) return "falencia";
+  if (RECUPERACAO_CLASS_CODES.has(classeCodigo) || RECUPERACAO_KEYWORDS.test(text)) return "recuperacao";
 
   if (CRIMINAL_KEYWORDS.test(text)) return "criminal";
   if (FISCAL_KEYWORDS.test(text)) return "fiscal";
@@ -531,7 +543,7 @@ function summarizeTribunalErrors(errors) {
 }
 
 function emptyByType() {
-  return { criminal: [], fiscal: [], trabalhista: [], civil: [], outro: [] };
+  return { criminal: [], fiscal: [], trabalhista: [], civil: [], falencia: [], recuperacao: [], outro: [] };
 }
 
 function classifyOverallStatus(processes, successfulTribunais, tribunalErrors) {

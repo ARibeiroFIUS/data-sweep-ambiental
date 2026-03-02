@@ -175,10 +175,57 @@ export interface InvestigationJudicialProcessesResponse {
   items: InvestigationJudicialProcess[];
 }
 
+export interface ScoreSubDimension {
+  score: number;
+  classification: "Baixo" | "Médio" | "Alto" | "Crítico";
+  flag_count: number;
+}
+
+export interface ScoreSubscores {
+  score_integridade: ScoreSubDimension;
+  score_judicial: ScoreSubDimension;
+  score_trabalhista: ScoreSubDimension;
+  score_financeiro: ScoreSubDimension;
+  score_rede: ScoreSubDimension;
+}
+
+export interface ScoreTopRisk {
+  id: string;
+  title: string;
+  source: string;
+  effective_weight: number;
+}
+
+export interface ScoreExplanation {
+  top_risks: ScoreTopRisk[];
+}
+
+export interface ScoreHistoryPoint {
+  score: number;
+  analyzed_at: string;
+}
+
+export interface ScoreTrendMeta {
+  points: ScoreHistoryPoint[];
+  delta_30d: number;
+  delta_90d: number;
+  trend: "↑" | "↓" | "→";
+}
+
+export interface PeerBenchmarkMeta {
+  cnae: string;
+  sample_size: number;
+  avg_score: number;
+  rank_worse_or_equal: number;
+  top_risk_percent: number;
+}
+
 export interface RiskAnalysis {
   company: CompanyData;
   score: number;
   classification: "Baixo" | "Médio" | "Alto" | "Crítico";
+  subscores?: ScoreSubscores;
+  score_explanation?: ScoreExplanation;
   flags: RiskFlag[];
   sources: DataSource[];
   summary: string;
@@ -197,6 +244,8 @@ export interface RiskAnalysis {
       auto_started: boolean;
     };
     judicial_scan?: JudicialScanMeta;
+    score_trend?: ScoreTrendMeta;
+    peer_benchmark?: PeerBenchmarkMeta;
   };
   /** Laudo investigativo gerado por GenAI (OpenAI/Anthropic) */
   ai_analysis?: AiAnalysis;

@@ -1189,6 +1189,12 @@ function classifyJudicialSeverity(processes) {
   const text = processes
     .flatMap((process) => [process?.classe?.nome ?? "", ...(process?.assuntos ?? []).map((item) => item?.nome ?? "")])
     .join(" ");
+  if (/fal[eê]ncia|insolv[êe]ncia|concordata/i.test(text)) {
+    return { severity: "critical", weight: 50, type: "falencia" };
+  }
+  if (/recupera[çc][aã]o judicial|reestrutura[çc][aã]o/i.test(text)) {
+    return { severity: "critical", weight: 40, type: "recuperacao_judicial" };
+  }
   if (/criminal|penal|improbidade|corrup/i.test(text)) {
     return { severity: "critical", weight: 30, type: "criminal" };
   }

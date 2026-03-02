@@ -73,6 +73,13 @@ export const SOURCE_REGISTRY = {
     ttlMs: 6 * 60 * 60 * 1000,
     featureFlag: "FEATURE_MTE_TRABALHO_ESCRAVO",
   },
+  mte_autuacoes: {
+    id: "mte_autuacoes",
+    name: "MTE — Autos de Infração Trabalhista",
+    timeoutMs: 15000,
+    ttlMs: 0,
+    featureFlag: "FEATURE_MTE_AUTUACOES",
+  },
   pgfn_fgts: {
     id: "pgfn_fgts",
     name: "PGFN — Dívida Ativa (FGTS)",
@@ -107,6 +114,13 @@ export const SOURCE_REGISTRY = {
     timeoutMs: 0,
     ttlMs: 0,
     featureFlag: "FEATURE_JUDICIAL_CRAWLER",
+  },
+  score_timeline: {
+    id: "score_timeline",
+    name: "Timeline de Risco (Histórico Interno)",
+    timeoutMs: 0,
+    ttlMs: 0,
+    featureFlag: "FEATURE_SCORE_TIMELINE",
   },
 };
 
