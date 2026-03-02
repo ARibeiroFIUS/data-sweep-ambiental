@@ -928,12 +928,28 @@ export async function getInvestigationJudicialSummary(runId) {
     const [catalogRows, coverageRows, processRows] = await Promise.all([
       activePool.query(`SELECT COUNT(*)::int AS total_supported FROM tribunal_catalog WHERE active = TRUE`),
       activePool.query(
-        `SELECT
-           COUNT(DISTINCT tribunal_id)::int AS tribunais_consultados,
-           COUNT(DISTINCT tribunal_id) FILTER (WHERE status IN ('unavailable', 'error'))::int AS tribunais_indisponiveis,
-           COUNT(DISTINCT tribunal_id) FILTER (WHERE status = 'success')::int AS tribunais_com_match
-         FROM investigation_judicial_coverage
-         WHERE run_id = $1`,
+        `WITH by_tribunal AS (
+           SELECT
+             tribunal_id,
+             BOOL_OR(status = 'success') AS has_success,
+             BOOL_OR(status = 'not_found') AS has_not_found,
+             BOOL_OR(status = 'unavailable') AS has_unavailable,
+             BOOL_OR(status = 'error') AS has_error,
+             BOOL_OR(COALESCE(status_reason, '') IN ('portal_disabled', 'public_query_disabled')) AS is_portal_disabled
+           FROM investigation_judicial_coverage
+           WHERE run_id = $1
+           GROUP BY tribunal_id
+         )
+         SELECT
+           COUNT(*)::int AS tribunais_consultados,
+           COUNT(*) FILTER (WHERE has_success)::int AS tribunais_com_match,
+           COUNT(*) FILTER (WHERE (NOT has_success) AND has_not_found)::int AS tribunais_not_found,
+           COUNT(*) FILTER (
+             WHERE (NOT has_success) AND (NOT has_not_found) AND (has_unavailable OR has_error)
+           )::int AS tribunais_indisponiveis,
+           COUNT(*) FILTER (WHERE (NOT has_success) AND (NOT has_not_found) AND (NOT has_unavailable) AND has_error)::int AS tribunais_error,
+           COUNT(*) FILTER (WHERE is_portal_disabled)::int AS tribunais_portal_disabled
+         FROM by_tribunal`,
         [runId],
       ),
       activePool.query(
@@ -944,12 +960,28 @@ export async function getInvestigationJudicialSummary(runId) {
       ),
     ]);
 
+    const consulted = Number(coverageRows.rows[0]?.tribunais_consultados ?? 0) || 0;
+    const success = Number(coverageRows.rows[0]?.tribunais_com_match ?? 0) || 0;
+    const notFound = Number(coverageRows.rows[0]?.tribunais_not_found ?? 0) || 0;
+    const unavailable = Number(coverageRows.rows[0]?.tribunais_indisponiveis ?? 0) || 0;
+    const error = Number(coverageRows.rows[0]?.tribunais_error ?? 0) || 0;
+    const portalDisabled = Number(coverageRows.rows[0]?.tribunais_portal_disabled ?? 0) || 0;
+    const eligible = Math.max(0, consulted - portalDisabled);
+    const coveragePercent =
+      eligible > 0 ? Math.round((((success + notFound) / eligible) * 100) * 10) / 10 : 0;
+
     return {
-      supported: catalogRows.rows[0]?.total_supported ?? 0,
-      consulted: coverageRows.rows[0]?.tribunais_consultados ?? 0,
-      unavailable: coverageRows.rows[0]?.tribunais_indisponiveis ?? 0,
-      matched_tribunals: coverageRows.rows[0]?.tribunais_com_match ?? 0,
-      found_processes: processRows.rows[0]?.processos_encontrados ?? 0,
+      supported: Number(catalogRows.rows[0]?.total_supported ?? 0) || 0,
+      consulted,
+      unavailable,
+      matched_tribunals: success,
+      found_processes: Number(processRows.rows[0]?.processos_encontrados ?? 0) || 0,
+      eligible,
+      success,
+      not_found: notFound,
+      error,
+      portal_disabled: portalDisabled,
+      coverage_percent: coveragePercent,
     };
   } catch (error) {
     if (isMissingSchemaError(error)) {
@@ -959,6 +991,12 @@ export async function getInvestigationJudicialSummary(runId) {
         unavailable: 0,
         matched_tribunals: 0,
         found_processes: 0,
+        eligible: 0,
+        success: 0,
+        not_found: 0,
+        error: 0,
+        portal_disabled: 0,
+        coverage_percent: 0,
       };
     }
     throw error;

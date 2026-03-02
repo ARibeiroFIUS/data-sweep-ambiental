@@ -32,4 +32,16 @@ describe("risk scoring", () => {
     expect(result.score).toBe(100);
     expect(result.classification).toBe("Crítico");
   });
+
+  it("retorna mitigators sem quebrar top_risks", () => {
+    const result = calculateScore([
+      { id: "a", title: "Flag A", source: "Teste", weight: 30, verification_status: "objective" },
+      { id: "a2", title: "Flag A", source: "Teste", weight: 30, verification_status: "objective" }, // repetição atenua
+      { id: "b", title: "Flag B", source: "Teste", weight: 20, depth: 2, verification_status: "objective" }, // depth atenua
+    ]);
+
+    expect(Array.isArray(result.top_risks)).toBe(true);
+    expect(Array.isArray(result.mitigators)).toBe(true);
+    expect(result.mitigators.length).toBeGreaterThan(0);
+  });
 });

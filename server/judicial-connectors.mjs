@@ -110,6 +110,28 @@ function hasCaptchaBlock(html) {
   );
 }
 
+function extractResponseHeaders(response) {
+  const headers = {};
+  if (!response?.headers) return headers;
+  try {
+    for (const [key, value] of response.headers.entries()) {
+      const lower = String(key).toLowerCase();
+      if (
+        lower === "content-type" ||
+        lower === "server" ||
+        lower === "location" ||
+        lower.startsWith("cf-") ||
+        lower.startsWith("x-")
+      ) {
+        headers[lower] = value;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return headers;
+}
+
 function absoluteUrl(baseUrl, href) {
   try {
     if (!href) return baseUrl;
@@ -487,7 +509,7 @@ function buildEsajBaseUrl(tribunal) {
 
 async function fetchEsajPage(url, timeoutMs) {
   const retries = Math.max(0, ESAJ_FETCH_RETRIES);
-  let lastFailure = { ok: false, reason: "timeout_or_network", html: "" };
+  let lastFailure = { ok: false, reason: "timeout_or_network", html: "", status: 0, url, headers: {} };
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     const response = await fetchWithTimeout(url, timeoutMs, {
@@ -498,16 +520,44 @@ async function fetchEsajPage(url, timeoutMs) {
     });
 
     if (!response) {
-      lastFailure = { ok: false, reason: "timeout_or_network", html: "" };
+      lastFailure = { ok: false, reason: "timeout_or_network", html: "", status: 0, url, headers: {} };
     } else if (response.status === 401 || response.status === 403) {
-      return { ok: false, reason: "unauthorized", html: "" };
+      return {
+        ok: false,
+        reason: "unauthorized",
+        html: "",
+        status: response.status,
+        url: response.url ?? url,
+        headers: extractResponseHeaders(response),
+      };
     } else if (response.status === 429) {
-      lastFailure = { ok: false, reason: "rate_limited", html: "" };
+      lastFailure = {
+        ok: false,
+        reason: "rate_limited",
+        html: "",
+        status: response.status,
+        url: response.url ?? url,
+        headers: extractResponseHeaders(response),
+      };
     } else if (!response.ok) {
-      lastFailure = { ok: false, reason: `http_${response.status}`, html: "" };
+      lastFailure = {
+        ok: false,
+        reason: `http_${response.status}`,
+        html: "",
+        status: response.status,
+        url: response.url ?? url,
+        headers: extractResponseHeaders(response),
+      };
     } else {
       const html = await response.text().catch(() => "");
-      return { ok: true, reason: "ok", html };
+      return {
+        ok: true,
+        reason: "ok",
+        html,
+        status: response.status,
+        url: response.url ?? url,
+        headers: extractResponseHeaders(response),
+      };
     }
 
     const shouldRetry =
@@ -541,6 +591,7 @@ async function crawlEsajScope({
       statusReason: "invalid_tribunal",
       processes: [],
       message: "Base URL do tribunal ESAJ não configurada",
+      artifacts: null,
     };
   }
 
@@ -551,6 +602,7 @@ async function crawlEsajScope({
       statusReason: "unsupported_query_mode",
       processes: [],
       message: `Modo ${queryMode} não suportado em ${scope}`,
+      artifacts: null,
     };
   }
 
@@ -571,6 +623,12 @@ async function crawlEsajScope({
       statusReason: first.reason,
       processes: [],
       message: `${scope.toUpperCase()} indisponível (${first.reason})`,
+      artifacts: {
+        final_url: first.url ?? firstUrl.toString(),
+        http_status: Number(first.status ?? 0) || null,
+        headers: first.headers ?? {},
+        html: String(first.html ?? "").slice(0, 8000),
+      },
     };
   }
 
@@ -580,6 +638,12 @@ async function crawlEsajScope({
       statusReason: "captcha_blocked",
       processes: [],
       message: `${scope.toUpperCase()} bloqueou consulta por captcha`,
+      artifacts: {
+        final_url: first.url ?? firstUrl.toString(),
+        http_status: Number(first.status ?? 0) || null,
+        headers: first.headers ?? {},
+        html: String(first.html ?? "").slice(0, 8000),
+      },
     };
   }
 
@@ -614,6 +678,14 @@ async function crawlEsajScope({
       unique.length > 0
         ? `${scope.toUpperCase()} retornou ${unique.length} processo(s)`
         : `${scope.toUpperCase()} sem registros para consulta`,
+    artifacts: unique.length > 0
+      ? null
+      : {
+          final_url: first.url ?? firstUrl.toString(),
+          http_status: Number(first.status ?? 0) || null,
+          headers: first.headers ?? {},
+          html: String(first.html ?? "").slice(0, 8000),
+        },
   };
 }
 
@@ -700,6 +772,10 @@ async function runEsajConnector({ tribunal, queryMode, document, name, timeoutMs
       ? `; Filtro parte-alvo removeu ${droppedByTargetFilter} resultado(s) sem confirmação da empresa como parte`
       : "";
   const message = `CPoPG: ${cpopg.message}; CPoSG: ${cposg.message}${detailSuffix}${targetFilterSuffix}`;
+  const artifacts =
+    status === "unavailable"
+      ? cpopg.artifacts ?? cposg.artifacts ?? null
+      : null;
   return {
     connectorFamily: "esaj",
     queryMode,
@@ -709,6 +785,7 @@ async function runEsajConnector({ tribunal, queryMode, document, name, timeoutMs
     message,
     evidence: [],
     processes: combined,
+    artifacts,
   };
 }
 
@@ -732,6 +809,32 @@ function baseResult({ connectorFamily, queryMode, startedAt, status, statusReaso
     message,
     evidence: [],
     processes,
+  };
+}
+
+function normalizeConnectorStatusReason(status, reason) {
+  const normalizedStatus = String(status ?? "").trim().toLowerCase();
+  const value = String(reason ?? "").trim().toLowerCase();
+  if (!value) return "";
+  if (normalizedStatus === "not_found") return "not_found";
+
+  const map = {
+    not_listed: "not_found",
+    public_query_disabled: "portal_disabled",
+    parser_error: "no_automatable_form",
+    no_tribunal_response: "timeout_or_network",
+  };
+
+  if (value in map) return map[value];
+  if (/^http_\d+$/.test(value)) return "http_error";
+  return value;
+}
+
+function normalizeConnectorResult(result) {
+  const normalizedReason = normalizeConnectorStatusReason(result?.status, result?.statusReason);
+  return {
+    ...result,
+    statusReason: normalizedReason || null,
   };
 }
 
@@ -887,19 +990,20 @@ export async function runJudicialConnectorQuery(input) {
       runId: input?.runId,
       timeoutMs,
     });
+    const normalizedResult = normalizeConnectorResult(result);
 
     attempts.push({
       connector_family: family,
-      status: result.status,
-      status_reason: result.statusReason,
-      latency_ms: result.latencyMs,
-      message: result.message,
+      status: normalizedResult.status,
+      status_reason: normalizedResult.statusReason,
+      latency_ms: normalizedResult.latencyMs,
+      message: normalizedResult.message,
     });
 
-    const terminal = result.status === "success" || result.status === "not_found";
+    const terminal = normalizedResult.status === "success" || normalizedResult.status === "not_found";
     if (terminal) {
       return {
-        ...result,
+        ...normalizedResult,
         attempts,
       };
     }
@@ -910,21 +1014,21 @@ export async function runJudicialConnectorQuery(input) {
       nextFamily === "datajud";
     if (blockEntityFallbackToDatajud) {
       return {
-        ...result,
+        ...normalizedResult,
         attempts,
       };
     }
 
     const shouldTryFallback =
-      result.status === "unavailable" ||
-      result.status === "error" ||
-      result.statusReason === "unsupported_query_mode" ||
-      result.statusReason === "entity_lookup_not_supported_public_api" ||
-      result.statusReason === "feature_disabled";
+      normalizedResult.status === "unavailable" ||
+      normalizedResult.status === "error" ||
+      normalizedResult.statusReason === "unsupported_query_mode" ||
+      normalizedResult.statusReason === "entity_lookup_not_supported_public_api" ||
+      normalizedResult.statusReason === "feature_disabled";
 
     if (!shouldTryFallback) {
       return {
-        ...result,
+        ...normalizedResult,
         attempts,
       };
     }
@@ -934,7 +1038,7 @@ export async function runJudicialConnectorQuery(input) {
     connectorFamily: primaryFamily,
     queryMode,
     status: "unavailable",
-    statusReason: "no_tribunal_response",
+    statusReason: "timeout_or_network",
     latencyMs: attempts.reduce((sum, item) => sum + Number(item.latency_ms ?? 0), 0),
     message: `Nenhum conector retornou resposta consultável para ${tribunalId}`,
     evidence: [],

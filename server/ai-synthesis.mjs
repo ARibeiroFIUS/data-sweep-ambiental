@@ -26,7 +26,7 @@ FORMATO OBRIGATÓRIO — responda EXATAMENTE com estas 3 seções, usando os tí
 
 ## RESUMO EXECUTIVO
 (2-3 parágrafos: avaliação do risco geral, principais achados relevantes, recomendação final clara.
-Mencione os subscores mais elevados e os top fatores de risco quando disponíveis.)
+Mencione os subscores mais elevados, os top fatores de risco e os fatores mitigadores quando disponíveis.)
 
 ## ANÁLISE DETALHADA
 (Por categoria de risco — mencione APENAS categorias com achados concretos):
@@ -96,6 +96,15 @@ function buildPrompt(synthesisInput) {
     lines.push("Top fatores de risco:");
     for (const r of score_explanation.top_risks) {
       lines.push(`  1. ${r.title} (+${r.effective_weight}pts efetivos) [flag_id=${r.id}]`);
+    }
+  }
+
+  if (score_explanation?.mitigators?.length > 0) {
+    lines.push("Fatores mitigadores (redução de impacto no score):");
+    for (const m of score_explanation.mitigators) {
+      lines.push(
+        `  - ${m.title} (-${m.reduction}pts de impacto) [flag_id=${m.id}]${m.reason ? ` — ${m.reason}` : ""}`,
+      );
     }
   }
 

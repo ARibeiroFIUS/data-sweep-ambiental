@@ -414,11 +414,64 @@ function computeDatajudEnrichment(coverageItems) {
   return { attempted, enriched, failed, unavailable };
 }
 
+function computeCrawlerCoverageSummary(judicial) {
+  if (!isObject(judicial)) {
+    return {
+      eligible: 0,
+      success: 0,
+      not_found: 0,
+      unavailable: 0,
+      coverage_percent: 0,
+    };
+  }
+
+  const eligibleRaw = Number(judicial.eligible ?? Number.NaN);
+  const successRaw = Number(judicial.success ?? judicial.matched_tribunals ?? 0);
+  const notFoundRaw = Number(judicial.not_found ?? 0);
+  const unavailableRaw = Number(judicial.unavailable ?? 0);
+  const coverageRaw = Number(judicial.coverage_percent ?? Number.NaN);
+
+  const eligible =
+    Number.isFinite(eligibleRaw) && eligibleRaw >= 0
+      ? Math.round(eligibleRaw)
+      : Math.max(
+          0,
+          Math.round(
+            (Number(judicial.consulted ?? 0) || 0) -
+              (Number(judicial.portal_disabled ?? 0) || 0),
+          ),
+        );
+  const success = Math.max(0, Math.round(Number.isFinite(successRaw) ? successRaw : 0));
+  const not_found = Math.max(0, Math.round(Number.isFinite(notFoundRaw) ? notFoundRaw : 0));
+  const unavailable = Math.max(0, Math.round(Number.isFinite(unavailableRaw) ? unavailableRaw : 0));
+  const coverage_percent =
+    Number.isFinite(coverageRaw)
+      ? Math.max(0, Math.min(100, coverageRaw))
+      : eligible > 0
+        ? Math.round((((success + not_found) / eligible) * 100) * 10) / 10
+        : 0;
+
+  return {
+    eligible,
+    success,
+    not_found,
+    unavailable,
+    coverage_percent,
+  };
+}
+
 function upsertSource(sources, sourceId, patch) {
+  const normalizedStatus = String(patch?.status ?? "").trim().toLowerCase();
+  const normalizedReason = normalizeSourceStatusReason(normalizedStatus, patch?.status_reason);
+  const safePatch = {
+    ...patch,
+    ...(normalizedReason ? { status_reason: normalizedReason } : {}),
+  };
+
   const list = Array.isArray(sources) ? [...sources] : [];
   const index = list.findIndex((item) => item?.id === sourceId);
   if (index >= 0) {
-    list[index] = { ...list[index], ...patch, id: sourceId };
+    list[index] = { ...list[index], ...safePatch, id: sourceId };
     return list;
   }
 
@@ -426,9 +479,36 @@ function upsertSource(sources, sourceId, patch) {
     id: sourceId,
     name: SOURCE_REGISTRY[sourceId]?.name ?? sourceId,
     status: "unavailable",
-    ...patch,
+    ...safePatch,
   });
   return list;
+}
+
+function normalizeSourceStatusReason(status, reason) {
+  const normalizedStatus = String(status ?? "").trim().toLowerCase();
+  const value = String(reason ?? "").trim().toLowerCase();
+  if (!value) return "";
+  if (normalizedStatus === "not_found") return "not_found";
+
+  const map = {
+    not_listed: "not_found",
+    no_exact_document_match: "not_found",
+    public_query_disabled: "portal_disabled",
+    no_tribunal_response: "timeout_or_network",
+    upstream_error: "http_error",
+    upstream_http_error: "http_error",
+    invalid_json_response: "http_error",
+    invalid_payload: "http_error",
+    invalid_source_result: "http_error",
+    missing_source_result: "http_error",
+    unhandled_exception: "http_error",
+    index_query_failed: "http_error",
+    parser_error: "no_automatable_form",
+  };
+
+  if (value in map) return map[value];
+  if (/^http_\d+$/.test(value)) return "http_error";
+  return value;
 }
 
 function syncJudicialSources(payload, deepSummary, judicialCoverage) {
@@ -525,7 +605,10 @@ function buildDeepReconciliationSignature(deepSummary) {
   const foundProcesses = Number(judicial.found_processes ?? 0) || 0;
   const consulted = Number(judicial.consulted ?? 0) || 0;
   const unavailable = Number(judicial.unavailable ?? 0) || 0;
-  return `${runId}:${status}:${flagsCount}:${foundProcesses}:${consulted}:${unavailable}`;
+  const eligible = Number(judicial.eligible ?? 0) || 0;
+  const success = Number(judicial.success ?? judicial.matched_tribunals ?? 0) || 0;
+  const notFound = Number(judicial.not_found ?? 0) || 0;
+  return `${runId}:${status}:${flagsCount}:${foundProcesses}:${consulted}:${unavailable}:${eligible}:${success}:${notFound}`;
 }
 
 function hasDeepReconciliationUpToDate(payload, deepSummary) {
@@ -574,7 +657,10 @@ async function reconcileResultWithDeepInvestigation(payload, deepSummary, deepRu
   );
   const scoring = calculateScore(deepFlags);
   const subscores = calculateSubscores(deepFlags);
-  const scoreExplanation = { top_risks: Array.isArray(scoring.top_risks) ? scoring.top_risks : [] };
+  const scoreExplanation = {
+    top_risks: Array.isArray(scoring.top_risks) ? scoring.top_risks : [],
+    mitigators: Array.isArray(scoring.mitigators) ? scoring.mitigators : [],
+  };
   const companyName =
     payload.company && typeof payload.company === "object" && typeof payload.company.razao_social === "string"
       ? payload.company.razao_social
@@ -654,6 +740,7 @@ function mergeDeepInvestigationMeta(result, deepSummary) {
   meta.deep_investigation = currentDeep;
 
   if (judicial && typeof judicial === "object") {
+    const coverage = computeCrawlerCoverageSummary(judicial);
     meta.judicial_scan = {
       run_id: runId ?? currentJudicial.run_id ?? null,
       status: status ?? currentJudicial.status ?? "running",
@@ -662,6 +749,7 @@ function mergeDeepInvestigationMeta(result, deepSummary) {
       unavailable: judicial.unavailable ?? currentJudicial.unavailable ?? 0,
       found_processes: judicial.found_processes ?? currentJudicial.found_processes ?? 0,
     };
+    meta.crawler_coverage_summary = coverage;
   }
 
   next.meta = meta;
@@ -903,7 +991,10 @@ const server = http.createServer(async (req, res) => {
                 score: rescoring.score,
                 classification: rescoring.classification,
                 subscores: resubscores,
-                score_explanation: { top_risks: rescoring.top_risks ?? [] },
+                score_explanation: {
+                  top_risks: rescoring.top_risks ?? [],
+                  mitigators: rescoring.mitigators ?? [],
+                },
                 summary: buildSummaryText(
                   rescoring.classification,
                   nextFlags,

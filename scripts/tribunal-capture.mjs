@@ -24,6 +24,24 @@ function nowStamp() {
   return `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}-${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
 }
 
+function pickRelevantHeaders(headers) {
+  const result = {};
+  if (!headers || typeof headers !== "object") return result;
+  for (const [key, value] of Object.entries(headers)) {
+    const lower = String(key).toLowerCase();
+    if (
+      lower === "content-type" ||
+      lower === "server" ||
+      lower === "location" ||
+      lower.startsWith("cf-") ||
+      lower.startsWith("x-")
+    ) {
+      result[lower] = value;
+    }
+  }
+  return result;
+}
+
 async function main() {
   const options = parseCliArgs(process.argv.slice(2));
   if (options.help) {
@@ -103,17 +121,23 @@ async function main() {
 
   let navigationError = null;
   let status = null;
+  let responseHeaders = {};
+  let navLatencyMs = null;
   let finalUrl = targetUrl;
 
   try {
+    const navStartedAt = Date.now();
     const response = await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+    navLatencyMs = Date.now() - navStartedAt;
     status = response?.status() ?? null;
+    responseHeaders = pickRelevantHeaders(response?.headers?.() ?? {});
     if (waitMs > 0) {
       await page.waitForTimeout(waitMs);
     }
     finalUrl = page.url();
   } catch (error) {
     navigationError = String(error?.message ?? error);
+    navLatencyMs = navLatencyMs ?? timeoutMs;
     finalUrl = page.url() || targetUrl;
   }
 
@@ -158,6 +182,8 @@ async function main() {
         targetUrl,
         finalUrl,
         status,
+        latencyMs: navLatencyMs,
+        headers: responseHeaders,
         timeoutMs,
         waitMs,
         navigationError,
@@ -193,4 +219,3 @@ main().catch((error) => {
   console.error(error.message || error);
   process.exit(1);
 });
-

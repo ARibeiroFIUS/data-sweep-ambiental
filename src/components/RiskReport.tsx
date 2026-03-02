@@ -283,6 +283,13 @@ export function RiskReport({ data, onBack }: RiskReportProps) {
               {" "}| processos: {judicialSummary?.found_processes ?? data.meta.judicial_scan.found_processes}
             </p>
           )}
+          {data.meta?.crawler_coverage_summary && (
+            <p className="text-xs text-muted-foreground/50 mt-1">
+              Cobertura efetiva do crawler: {data.meta.crawler_coverage_summary.coverage_percent.toFixed(1)}%
+              {" "}({data.meta.crawler_coverage_summary.success + data.meta.crawler_coverage_summary.not_found}/
+              {data.meta.crawler_coverage_summary.eligible})
+            </p>
+          )}
           {datajudSource && (
             <p className="text-xs text-muted-foreground/50 mt-1">
               DataJud:{" "}
@@ -298,7 +305,7 @@ export function RiskReport({ data, onBack }: RiskReportProps) {
         </div>
       </div>
 
-      {(data.subscores || data.score_explanation?.top_risks?.length || data.meta?.score_trend || data.meta?.peer_benchmark) && (
+      {(data.subscores || data.score_explanation?.top_risks?.length || data.score_explanation?.mitigators?.length || data.meta?.score_trend || data.meta?.peer_benchmark || data.meta?.crawler_coverage_summary) && (
         <div className="glass-card p-6 space-y-5">
           <h2 className="text-lg font-semibold">Painel Analítico</h2>
 
@@ -330,6 +337,35 @@ export function RiskReport({ data, onBack }: RiskReportProps) {
                   </p>
                 ))}
               </div>
+            </div>
+          ) : null}
+
+          {data.score_explanation?.mitigators?.length ? (
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium">Fatores mitigadores (reduziram impacto)</h3>
+              <div className="space-y-1">
+                {data.score_explanation.mitigators.map((item) => (
+                  <p key={`${item.id}-${item.title}-mit`} className="text-sm text-muted-foreground">
+                    <span className="text-foreground font-medium">{item.title}</span>{" "}
+                    <span className="text-xs">(-{item.reduction} pts)</span>
+                    {item.reason ? <span className="text-xs"> · {item.reason}</span> : null}
+                  </p>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {data.meta?.crawler_coverage_summary ? (
+            <div className="rounded-lg border border-border/60 p-3 bg-secondary/20">
+              <p className="text-sm text-muted-foreground">
+                Cobertura judicial efetiva:{" "}
+                <span className="font-semibold text-foreground">
+                  {data.meta.crawler_coverage_summary.coverage_percent.toFixed(1)}%
+                </span>{" "}
+                ({data.meta.crawler_coverage_summary.success + data.meta.crawler_coverage_summary.not_found}/
+                {data.meta.crawler_coverage_summary.eligible}) · indisponíveis:{" "}
+                <span className="font-medium text-foreground">{data.meta.crawler_coverage_summary.unavailable}</span>
+              </p>
             </div>
           ) : null}
 

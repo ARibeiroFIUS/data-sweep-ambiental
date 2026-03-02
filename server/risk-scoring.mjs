@@ -154,9 +154,11 @@ function computeContributions(flags) {
 
     const key = repetitionKey(flag);
     let repeated = raw;
+    let repetitionIndex = 0;
     if (key) {
       const idx = repetitionCount.get(key) ?? 0;
       repetitionCount.set(key, idx + 1);
+      repetitionIndex = idx;
       repeated = raw * repetitionFactor(idx);
     }
 
@@ -167,10 +169,45 @@ function computeContributions(flags) {
     const applied = Math.min(repeated, allowed);
     familyTotals.set(family, used + applied);
 
-    contributions.push({ flag, effective: applied });
+    contributions.push({
+      flag,
+      effective: applied,
+      raw,
+      repeated,
+      family,
+      factors: {
+        depth: df,
+        confidence: cf,
+        verification: vf,
+        repetition: repetitionFactor(repetitionIndex),
+      },
+      reductions: {
+        total: Math.max(0, raw - applied),
+        repetition: Math.max(0, raw - repeated),
+        cap: Math.max(0, repeated - applied),
+      },
+    });
   }
 
   return contributions;
+}
+
+function mitigationReason(contribution) {
+  if (!contribution || typeof contribution !== "object") return "Ajuste conservador de pontuação";
+
+  const vf = Number(contribution.factors?.verification ?? 1);
+  const cf = Number(contribution.factors?.confidence ?? 1);
+  const df = Number(contribution.factors?.depth ?? 1);
+  const repetitionLoss = Number(contribution.reductions?.repetition ?? 0);
+  const capLoss = Number(contribution.reductions?.cap ?? 0);
+
+  if (vf <= 0) return "Flag com verificação possível (sem impacto efetivo)";
+  if (vf < 1) return "Confirmação parcial da evidência (verification provável)";
+  if (cf < 1) return "Confiança reduzida na desambiguação da evidência";
+  if (df < 1) return "Ocorrência em entidade indireta da rede (depth > 0)";
+  if (repetitionLoss > 0) return "Regra de repetição para evitar inflação por alertas duplicados";
+  if (capLoss > 0) return "Teto por família de risco para evitar superpontuação estrutural";
+  return "Ajuste conservador de pontuação";
 }
 
 function classifyScore(score) {
@@ -189,7 +226,7 @@ function classifyScore(score) {
  * Também retorna os top contribuidores para explicabilidade.
  *
  * @param {Array<{weight: number, depth?: number, confidence_level?: string, verification_status?: string}>} flags
- * @returns {{ score: number, classification: string, top_risks: Array }}
+ * @returns {{ score: number, classification: string, top_risks: Array, mitigators: Array }}
  */
 export function calculateScore(flags) {
   const contributions = computeContributions(flags);
@@ -208,7 +245,31 @@ export function calculateScore(flags) {
       effective_weight: Math.round(c.effective * 10) / 10,
     }));
 
-  return { score, classification, top_risks: topRisks };
+  const mitigationByKey = new Map();
+  for (const c of contributions) {
+    const reduction = Number(c.reductions?.total ?? 0);
+    if (!(reduction > 0)) continue;
+
+    const key = `${c.flag.id ?? ""}|${c.flag.title ?? ""}|${c.flag.source ?? ""}`;
+    const prev = mitigationByKey.get(key);
+    const candidate = {
+      id: c.flag.id ?? "",
+      title: c.flag.title ?? "",
+      source: c.flag.source ?? "",
+      reduction: Math.round(reduction * 10) / 10,
+      reason: mitigationReason(c),
+    };
+
+    if (!prev || candidate.reduction > prev.reduction) {
+      mitigationByKey.set(key, candidate);
+    }
+  }
+
+  const mitigators = [...mitigationByKey.values()]
+    .sort((a, b) => b.reduction - a.reduction)
+    .slice(0, 3);
+
+  return { score, classification, top_risks: topRisks, mitigators };
 }
 
 /**

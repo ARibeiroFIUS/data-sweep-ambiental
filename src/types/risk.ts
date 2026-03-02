@@ -125,6 +125,12 @@ export interface InvestigationJudicialSummary {
   unavailable: number;
   matched_tribunals: number;
   found_processes: number;
+  eligible?: number;
+  success?: number;
+  not_found?: number;
+  error?: number;
+  portal_disabled?: number;
+  coverage_percent?: number;
 }
 
 export interface InvestigationJudicialCoverageItem {
@@ -196,8 +202,17 @@ export interface ScoreTopRisk {
   effective_weight: number;
 }
 
+export interface ScoreMitigator {
+  id: string;
+  title: string;
+  source: string;
+  reduction: number;
+  reason?: string;
+}
+
 export interface ScoreExplanation {
   top_risks: ScoreTopRisk[];
+  mitigators?: ScoreMitigator[];
 }
 
 export interface ScoreHistoryPoint {
@@ -244,6 +259,13 @@ export interface RiskAnalysis {
       auto_started: boolean;
     };
     judicial_scan?: JudicialScanMeta;
+    crawler_coverage_summary?: {
+      eligible: number;
+      success: number;
+      not_found: number;
+      unavailable: number;
+      coverage_percent: number;
+    };
     score_trend?: ScoreTrendMeta;
     peer_benchmark?: PeerBenchmarkMeta;
   };

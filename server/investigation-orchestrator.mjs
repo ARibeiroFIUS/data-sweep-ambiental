@@ -164,6 +164,19 @@ function safeDate(value) {
   return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
+function normalizeCoverageStatusReason(reason) {
+  const value = String(reason ?? "").trim().toLowerCase();
+  if (!value) return "";
+  const map = {
+    public_query_disabled: "portal_disabled",
+    parser_error: "no_automatable_form",
+    no_tribunal_response: "timeout_or_network",
+  };
+  if (value in map) return map[value];
+  if (/^http_\d+$/.test(value)) return "http_error";
+  return value;
+}
+
 async function fetchTextCached(url, timeoutMs = 10000, ttlMs = 6 * 60 * 60 * 1000) {
   const cached = textCache.get(url);
   if (cached && Date.now() - cached.fetchedAt < ttlMs) return cached.value;
@@ -1354,7 +1367,8 @@ async function runJudicialCoverageAgent(run) {
       });
 
       let coverageStatus = connectorResult.status;
-      let coverageStatusReason = connectorResult.statusReason;
+      let coverageStatusReason = normalizeCoverageStatusReason(connectorResult.statusReason);
+      if (!coverageStatusReason) coverageStatusReason = null;
       let coverageMessage = connectorResult.message;
       let validProcesses = [];
 
@@ -1387,6 +1401,29 @@ async function runJudicialCoverageAgent(run) {
       }
 
       const evidenceCount = validProcesses.length;
+      const normalizedArtifacts =
+        coverageStatus === "unavailable" || coverageStatus === "error"
+          ? {
+              final_url: connectorResult?.artifacts?.final_url ?? null,
+              http_status:
+                Number.isFinite(Number(connectorResult?.artifacts?.http_status))
+                  ? Number(connectorResult.artifacts.http_status)
+                  : null,
+              headers:
+                connectorResult?.artifacts?.headers &&
+                typeof connectorResult.artifacts.headers === "object"
+                  ? connectorResult.artifacts.headers
+                  : undefined,
+              html:
+                typeof connectorResult?.artifacts?.html === "string"
+                  ? connectorResult.artifacts.html
+                  : "",
+              latency_ms:
+                Number.isFinite(Number(connectorResult?.latencyMs)) ? Number(connectorResult.latencyMs) : null,
+              screenshot_png: connectorResult?.artifacts?.screenshot_png ?? null,
+            }
+          : undefined;
+
       await upsertInvestigationJudicialCoverage({
         runId: run.id,
         tribunalId: tribunal.tribunal_id,
@@ -1405,6 +1442,7 @@ async function runJudicialCoverageAgent(run) {
           attempts: connectorResult.attempts ?? [],
           connector_error_summary: connectorResult.errorSummary ?? "",
           datajud_enrichment: datajudEnrichment,
+          ...(normalizedArtifacts ? { error_artifacts: normalizedArtifacts } : {}),
         },
       });
 
@@ -1832,6 +1870,12 @@ export async function getInvestigationStatus(runId) {
       unavailable: 0,
       matched_tribunals: 0,
       found_processes: 0,
+      eligible: 0,
+      success: 0,
+      not_found: 0,
+      error: 0,
+      portal_disabled: 0,
+      coverage_percent: 0,
     },
   };
 }
@@ -1918,6 +1962,12 @@ export async function getInvestigationJudicialCoverageData(runId) {
       unavailable: 0,
       matched_tribunals: 0,
       found_processes: 0,
+      eligible: 0,
+      success: 0,
+      not_found: 0,
+      error: 0,
+      portal_disabled: 0,
+      coverage_percent: 0,
     },
     items: rows.map((row) => ({
       tribunal_id: row.tribunal_id,
@@ -1973,6 +2023,12 @@ export async function getInvestigationJudicialSummaryData(runId) {
     unavailable: 0,
     matched_tribunals: 0,
     found_processes: 0,
+    eligible: 0,
+    success: 0,
+    not_found: 0,
+    error: 0,
+    portal_disabled: 0,
+    coverage_percent: 0,
   };
 }
 

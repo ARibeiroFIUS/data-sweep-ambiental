@@ -53,6 +53,7 @@ export class HttpError extends Error {
 
 function buildSourceStatus(sourceId, status, data = {}) {
   const source = getSourceConfig(sourceId);
+  const normalizedReason = normalizeSourceStatusReason(status, data.statusReason);
   const payload = {
     id: source.id,
     name: source.name,
@@ -62,9 +63,37 @@ function buildSourceStatus(sourceId, status, data = {}) {
   };
 
   if (data.message) payload.message = data.message;
-  if (data.statusReason) payload.status_reason = data.statusReason;
+  if (normalizedReason) payload.status_reason = normalizedReason;
 
   return payload;
+}
+
+function normalizeSourceStatusReason(status, reason) {
+  const normalizedStatus = String(status ?? "").trim().toLowerCase();
+  const value = String(reason ?? "").trim().toLowerCase();
+  if (!value) return "";
+
+  if (normalizedStatus === "not_found") return "not_found";
+
+  const map = {
+    not_listed: "not_found",
+    no_exact_document_match: "not_found",
+    public_query_disabled: "portal_disabled",
+    upstream_error: "http_error",
+    upstream_http_error: "http_error",
+    invalid_json_response: "http_error",
+    invalid_payload: "http_error",
+    invalid_source_result: "http_error",
+    missing_source_result: "http_error",
+    unhandled_exception: "http_error",
+    index_query_failed: "http_error",
+    parser_error: "no_automatable_form",
+    no_tribunal_response: "timeout_or_network",
+  };
+
+  if (value in map) return map[value];
+  if (/^http_\d+$/.test(value)) return "http_error";
+  return value;
 }
 
 function normalizeFlagVerification(flag) {
@@ -2524,9 +2553,9 @@ export async function analyzeCnpj(cnpj) {
     flags.push(...depth2Flags.map(withVerificationStatus));
   }
 
-  const { score, classification, top_risks } = calculateScore(flags);
+  const { score, classification, top_risks, mitigators } = calculateScore(flags);
   const subscores = calculateSubscores(flags);
-  const score_explanation = { top_risks };
+  const score_explanation = { top_risks, mitigators };
   const summary = generateSummary(classification, flags, company.razao_social);
   const partial = sources.some((source) => source.status === "error" || source.status === "unavailable");
 

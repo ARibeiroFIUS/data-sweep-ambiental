@@ -51,6 +51,13 @@ const DEFAULT_HEADERS = {
 const DEFAULT_FETCH_RETRIES = Number.parseInt(process.env.JUDICIAL_CONNECTOR_FETCH_RETRIES ?? "2", 10);
 const DEFAULT_RETRY_DELAY_MS = Number.parseInt(process.env.JUDICIAL_CONNECTOR_RETRY_DELAY_MS ?? "400", 10);
 const DEFAULT_RETRY_JITTER_MS = Number.parseInt(process.env.JUDICIAL_CONNECTOR_RETRY_JITTER_MS ?? "250", 10);
+const HOST_CIRCUIT_FAILURE_THRESHOLD = Number.parseInt(
+  process.env.JUDICIAL_HOST_CIRCUIT_FAILURE_THRESHOLD ?? "4",
+  10,
+);
+const HOST_CIRCUIT_COOLDOWN_MS = Number.parseInt(process.env.JUDICIAL_HOST_CIRCUIT_COOLDOWN_MS ?? "45000", 10);
+/** @type {Map<string, { failures: number, blockedUntil: number }>} */
+const hostCircuitState = new Map();
 
 function createHttpSession() {
   return { cookies: new Map() };
@@ -73,6 +80,34 @@ function parseSetCookieHeaders(response) {
     .split(/,(?=[^;,=\s]+=[^;,]*)/g)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function extractResponseHeaders(response) {
+  const headers = {};
+  if (!response?.headers) return headers;
+
+  try {
+    for (const [key, value] of response.headers.entries()) {
+      const lower = String(key).toLowerCase();
+      if (
+        lower === "content-type" ||
+        lower === "server" ||
+        lower === "location" ||
+        lower.startsWith("cf-") ||
+        lower.startsWith("x-")
+      ) {
+        headers[lower] = value;
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return headers;
+}
+
+function htmlSnippet(value, maxChars = 8000) {
+  return String(value ?? "").slice(0, Math.max(200, maxChars));
 }
 
 function storeResponseCookies(session, response) {
@@ -125,6 +160,57 @@ function computeRetryDelayMs(attempt) {
   const base = Math.max(50, DEFAULT_RETRY_DELAY_MS) * (2 ** safeAttempt);
   const jitter = Math.floor(Math.random() * Math.max(1, DEFAULT_RETRY_JITTER_MS));
   return Math.min(base + jitter, 5000);
+}
+
+function resolveHost(value) {
+  try {
+    return new URL(String(value ?? "")).host.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function isHostCircuitOpen(host) {
+  if (!host) return false;
+  const state = hostCircuitState.get(host);
+  if (!state) return false;
+  if (!Number.isFinite(state.blockedUntil) || Date.now() >= state.blockedUntil) {
+    hostCircuitState.delete(host);
+    return false;
+  }
+  return true;
+}
+
+function registerHostSuccess(host) {
+  if (!host) return;
+  hostCircuitState.delete(host);
+}
+
+function registerHostFailure(host, reason = "") {
+  if (!host) return;
+  const normalized = String(reason ?? "").toLowerCase();
+  const shouldCount =
+    normalized === "timeout_or_network" ||
+    normalized === "access_blocked" ||
+    normalized === "http_503" ||
+    normalized === "http_504" ||
+    normalized === "http_522" ||
+    normalized === "http_524";
+  if (!shouldCount) return;
+
+  const current = hostCircuitState.get(host) ?? { failures: 0, blockedUntil: 0 };
+  const failures = current.failures + 1;
+  if (failures >= Math.max(1, HOST_CIRCUIT_FAILURE_THRESHOLD)) {
+    hostCircuitState.set(host, {
+      failures,
+      blockedUntil: Date.now() + Math.max(5000, HOST_CIRCUIT_COOLDOWN_MS),
+    });
+    return;
+  }
+  hostCircuitState.set(host, {
+    failures,
+    blockedUntil: 0,
+  });
 }
 
 function stripTags(value) {
@@ -369,6 +455,11 @@ function parseProcessesFromHtml(html, tribunalId, sourceUrl) {
 }
 
 async function fetchHtmlWithSession(url, timeoutMs, session, refererUrl = "") {
+  const host = resolveHost(url);
+  if (isHostCircuitOpen(host)) {
+    return { ok: false, status: 0, reason: "timeout_or_network", url, html: "", headers: {} };
+  }
+
   const cookieHeader = buildCookieHeader(session);
   const headers = {
     ...DEFAULT_HEADERS,
@@ -389,6 +480,7 @@ async function fetchHtmlWithSession(url, timeoutMs, session, refererUrl = "") {
       redirect: "follow",
     });
     if (!response) {
+      registerHostFailure(host, "timeout_or_network");
       if (attempt < DEFAULT_FETCH_RETRIES) {
         await sleep(computeRetryDelayMs(attempt));
         continue;
@@ -404,25 +496,30 @@ async function fetchHtmlWithSession(url, timeoutMs, session, refererUrl = "") {
           ? "access_blocked"
           : `http_${statusCode}`;
       if (attempt < DEFAULT_FETCH_RETRIES && isRetriableHttpStatus(statusCode)) {
+        registerHostFailure(host, reason);
         await sleep(computeRetryDelayMs(attempt));
         continue;
       }
+      registerHostFailure(host, reason);
       return {
         ok: false,
         status: statusCode,
         reason,
         url: response.url ?? url,
         html: "",
+        headers: extractResponseHeaders(response),
       };
     }
 
     const html = await response.text().catch(() => "");
+    registerHostSuccess(host);
     return {
       ok: true,
       status: response.status,
       reason: "ok",
       url: response.url ?? url,
       html,
+      headers: extractResponseHeaders(response),
     };
   }
 
@@ -461,6 +558,11 @@ async function submitForm({ form, timeoutMs, queryMode, queryValue, session, ref
     }
   }
 
+  const host = resolveHost(requestUrl);
+  if (isHostCircuitOpen(host)) {
+    return { ok: false, reason: "timeout_or_network", html: "", status: 0, url: requestUrl, headers: {} };
+  }
+
   for (let attempt = 0; attempt <= DEFAULT_FETCH_RETRIES; attempt += 1) {
     const response = await fetchWithTimeout(requestUrl, timeoutMs, {
       method,
@@ -469,6 +571,7 @@ async function submitForm({ form, timeoutMs, queryMode, queryValue, session, ref
       redirect: "follow",
     });
     if (!response) {
+      registerHostFailure(host, "timeout_or_network");
       if (attempt < DEFAULT_FETCH_RETRIES) {
         await sleep(computeRetryDelayMs(attempt));
         continue;
@@ -484,25 +587,30 @@ async function submitForm({ form, timeoutMs, queryMode, queryValue, session, ref
           ? "access_blocked"
           : `http_${statusCode}`;
       if (attempt < DEFAULT_FETCH_RETRIES && isRetriableHttpStatus(statusCode)) {
+        registerHostFailure(host, reason);
         await sleep(computeRetryDelayMs(attempt));
         continue;
       }
+      registerHostFailure(host, reason);
       return {
         ok: false,
         reason,
         html: "",
         status: statusCode,
         url: response.url ?? requestUrl,
+        headers: extractResponseHeaders(response),
       };
     }
 
     const html = await response.text().catch(() => "");
+    registerHostSuccess(host);
     return {
       ok: true,
       reason: "ok",
       html,
       status: response.status,
       url: response.url ?? requestUrl,
+      headers: extractResponseHeaders(response),
     };
   }
 
@@ -753,10 +861,29 @@ export async function runGenericTribunalConnector({
   let firstReachableHtml = "";
   let reachableUrl = "";
   let lastUnavailableReason = "timeout_or_network";
+  let lastHttpStatus = 0;
+  let lastHeaders = {};
+  let lastHtml = "";
+  let lastUrl = "";
+  const attempts = [];
   let triedSubmission = false;
   let observedCaptcha = false;
   let observedLogin = false;
   const validationErrorsSeen = [];
+
+  const buildUnavailableArtifacts = (extra = {}) => ({
+    connector_family: connectorFamily,
+    tribunal_id: tribunalId,
+    query_mode: queryMode,
+    final_url: extra.final_url ?? lastUrl ?? reachableUrl ?? null,
+    http_status: Number.isFinite(Number(extra.http_status ?? lastHttpStatus))
+      ? Number(extra.http_status ?? lastHttpStatus)
+      : null,
+    headers: Object.keys(extra.headers ?? lastHeaders ?? {}).length > 0 ? (extra.headers ?? lastHeaders) : undefined,
+    html: htmlSnippet(extra.html ?? lastHtml ?? firstReachableHtml ?? ""),
+    attempts,
+    captured_at: new Date().toISOString(),
+  });
 
   while (queue.length > 0 && visited.size < maxCandidates) {
     const candidate = queue.shift();
@@ -765,13 +892,28 @@ export async function runGenericTribunalConnector({
 
     const session = createHttpSession();
     const page = await fetchHtmlWithSession(candidate, effectiveTimeoutMs, session);
+    attempts.push({
+      phase: "open_page",
+      candidate,
+      ok: page.ok,
+      reason: page.reason,
+      status: page.status ?? 0,
+      final_url: page.url ?? candidate,
+    });
     if (!page.ok) {
       lastUnavailableReason = page.reason;
+      lastHttpStatus = Number(page.status ?? 0) || 0;
+      lastHeaders = page.headers ?? {};
+      lastUrl = page.url ?? candidate;
       continue;
     }
 
     firstReachableHtml = page.html;
     reachableUrl = page.url;
+    lastHttpStatus = Number(page.status ?? 0) || lastHttpStatus;
+    lastHeaders = page.headers ?? {};
+    lastHtml = page.html;
+    lastUrl = page.url ?? candidate;
 
     if (isCaptchaPage(page.html)) {
       observedCaptcha = true;
@@ -780,29 +922,41 @@ export async function runGenericTribunalConnector({
       observedLogin = true;
     }
     if (isAccessBlockedPage(page.html, page.status)) {
-      return {
-        connectorFamily,
-        queryMode,
-        status: "unavailable",
-        statusReason: "access_blocked",
+        return {
+          connectorFamily,
+          queryMode,
+          status: "unavailable",
+          statusReason: "access_blocked",
         latencyMs: Date.now() - startedAt,
-        message: "Portal bloqueou o acesso da automação para consulta pública",
-        evidence: [],
-        processes: [],
-      };
-    }
+          message: "Portal bloqueou o acesso da automação para consulta pública",
+          evidence: [],
+          processes: [],
+          artifacts: buildUnavailableArtifacts({
+            final_url: page.url,
+            http_status: page.status,
+            headers: page.headers,
+            html: page.html,
+          }),
+        };
+      }
     if (isPublicSearchDisabledPage(page.html)) {
-      return {
-        connectorFamily,
-        queryMode,
-        status: "unavailable",
-        statusReason: "public_query_disabled",
+        return {
+          connectorFamily,
+          queryMode,
+          status: "unavailable",
+          statusReason: "public_query_disabled",
         latencyMs: Date.now() - startedAt,
-        message: "Portal informa que a consulta pública está desativada",
-        evidence: [],
-        processes: [],
-      };
-    }
+          message: "Portal informa que a consulta pública está desativada",
+          evidence: [],
+          processes: [],
+          artifacts: buildUnavailableArtifacts({
+            final_url: page.url,
+            http_status: page.status,
+            headers: page.headers,
+            html: page.html,
+          }),
+        };
+      }
 
     const forms = parseForms(page.html, page.url).filter((form) => Array.isArray(form.inputs) && form.inputs.length > 0);
     if (forms.length === 0) {
@@ -862,11 +1016,37 @@ export async function runGenericTribunalConnector({
         });
         if (!submit.ok) {
           lastUnavailableReason = submit.reason;
+          lastHttpStatus = Number(submit.status ?? 0) || 0;
+          lastHeaders = submit.headers ?? {};
+          lastUrl = submit.url ?? page.url ?? candidate;
+          attempts.push({
+            phase: "submit_form",
+            candidate,
+            action_url: submit.url ?? form.actionUrl,
+            ok: false,
+            reason: submit.reason,
+            status: submit.status ?? 0,
+            final_url: submit.url ?? null,
+          });
           continue;
         }
 
+        attempts.push({
+          phase: "submit_form",
+          candidate,
+          action_url: submit.url ?? form.actionUrl,
+          ok: true,
+          reason: submit.reason,
+          status: submit.status ?? 0,
+          final_url: submit.url ?? null,
+        });
+
         if (isCaptchaPage(submit.html)) observedCaptcha = true;
         if (isLoginPage(submit.html)) observedLogin = true;
+        lastHttpStatus = Number(submit.status ?? 0) || lastHttpStatus;
+        lastHeaders = submit.headers ?? {};
+        lastHtml = submit.html;
+        lastUrl = submit.url ?? page.url ?? candidate;
         if (isAccessBlockedPage(submit.html, submit.status)) {
           return {
             connectorFamily,
@@ -877,6 +1057,12 @@ export async function runGenericTribunalConnector({
             message: "Portal bloqueou o acesso da automação para consulta pública",
             evidence: [],
             processes: [],
+            artifacts: buildUnavailableArtifacts({
+              final_url: submit.url,
+              http_status: submit.status,
+              headers: submit.headers,
+              html: submit.html,
+            }),
           };
         }
         if (isPublicSearchDisabledPage(submit.html)) {
@@ -889,6 +1075,12 @@ export async function runGenericTribunalConnector({
             message: "Portal informa que a consulta pública está desativada",
             evidence: [],
             processes: [],
+            artifacts: buildUnavailableArtifacts({
+              final_url: submit.url,
+              http_status: submit.status,
+              headers: submit.headers,
+              html: submit.html,
+            }),
           };
         }
 
@@ -936,6 +1128,7 @@ export async function runGenericTribunalConnector({
       message: `Formulário rejeitou a submissão: ${validationErrorsSeen[0]}`,
       evidence: [],
       processes: [],
+      artifacts: buildUnavailableArtifacts(),
     };
   }
 
@@ -949,6 +1142,7 @@ export async function runGenericTribunalConnector({
       message: "Consulta pública bloqueada por captcha/validação humana",
       evidence: [],
       processes: [],
+      artifacts: buildUnavailableArtifacts(),
     };
   }
 
@@ -975,6 +1169,7 @@ export async function runGenericTribunalConnector({
       message: "Portal exige autenticação para pesquisar por entidade",
       evidence: [],
       processes: [],
+      artifacts: buildUnavailableArtifacts(),
     };
   }
 
@@ -988,6 +1183,7 @@ export async function runGenericTribunalConnector({
       message: "Página pública alcançada, porém sem formulário de busca automatizável",
       evidence: [],
       processes: [],
+      artifacts: buildUnavailableArtifacts(),
     };
   }
 
@@ -1000,5 +1196,6 @@ export async function runGenericTribunalConnector({
     message: "Nenhum endpoint público respondeu de forma consultável",
     evidence: [],
     processes: [],
+    artifacts: buildUnavailableArtifacts(),
   };
 }
