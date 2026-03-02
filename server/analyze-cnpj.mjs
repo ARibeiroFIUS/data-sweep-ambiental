@@ -19,6 +19,10 @@ import { enqueueDeepInvestigation } from "./investigation-orchestrator.mjs";
 import { queryProcessosByCnpj, isDatajudEnabled } from "./datajud-query.mjs";
 
 const PORTAL_TRANSPARENCIA_API_KEY = (process.env.PORTAL_TRANSPARENCIA_API_KEY ?? "").trim();
+const CVM_SANCOES_API_URL = (process.env.CVM_SANCOES_API_URL ?? "https://api.cvm.gov.br/api/CVM/v1/sanctions").trim();
+const BACEN_SANCOES_API_URL = (process.env.BACEN_SANCOES_API_URL ?? "https://www.bcb.gov.br/api/psfn/v1/sancionados").trim();
+const CNDL_PROTESTOS_API_URL = (process.env.CNDL_PROTESTOS_API_URL ?? "").trim();
+const CNDL_PROTESTOS_API_KEY = (process.env.CNDL_PROTESTOS_API_KEY ?? "").trim();
 const SOCIO_CPF_QUERY_LIMIT = Number.parseInt(process.env.SOCIO_CPF_QUERY_LIMIT ?? "25", 10);
 const SOCIO_CPF_CONCURRENCY = Number.parseInt(process.env.SOCIO_CPF_CONCURRENCY ?? "4", 10);
 const execFileAsync = promisify(execFile);
@@ -139,6 +143,36 @@ function buildEvidenceItems(record, fieldSpecs) {
   return items.slice(0, 6);
 }
 
+function collectDocumentCandidatesDeep(value, out, depth = 0) {
+  if (depth > 3 || !value) return;
+
+  if (typeof value === "string" || typeof value === "number") {
+    const normalized = cleanDocument(value);
+    if (normalized.length === 14 || normalized.length === 11) out.push(normalized);
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value.slice(0, 20)) {
+      collectDocumentCandidatesDeep(item, out, depth + 1);
+    }
+    return;
+  }
+
+  if (typeof value === "object") {
+    for (const [key, nested] of Object.entries(value)) {
+      const normalizedKey = String(key).toLowerCase();
+      if (
+        normalizedKey.includes("cnpj") ||
+        normalizedKey.includes("cpf") ||
+        normalizedKey.includes("document")
+      ) {
+        collectDocumentCandidatesDeep(nested, out, depth + 1);
+      }
+    }
+  }
+}
+
 function collectRecordDocuments(record) {
   const candidates = [
     getValueByPath(record, "sancionado.codigoFormatado"),
@@ -148,6 +182,23 @@ function collectRecordDocuments(record) {
     getValueByPath(record, "pessoa.cnpj"),
     getValueByPath(record, "pessoaJuridica.cnpjFormatado"),
     getValueByPath(record, "pessoaJuridica.cnpj"),
+    getValueByPath(record, "documento"),
+    getValueByPath(record, "documentoFormatado"),
+    getValueByPath(record, "cnpj"),
+    getValueByPath(record, "cnpjFormatado"),
+    getValueByPath(record, "cpfCnpj"),
+    getValueByPath(record, "cnpjCpf"),
+    getValueByPath(record, "fornecedor.cnpj"),
+    getValueByPath(record, "fornecedor.cpfCnpj"),
+    getValueByPath(record, "fornecedor.cnpjCpf"),
+    getValueByPath(record, "participante.cnpj"),
+    getValueByPath(record, "participante.cpfCnpj"),
+    getValueByPath(record, "vencedor.cnpj"),
+    getValueByPath(record, "vencedor.cpfCnpj"),
+    getValueByPath(record, "contratado.cnpj"),
+    getValueByPath(record, "contratado.cpfCnpj"),
+    getValueByPath(record, "empresa.cnpj"),
+    getValueByPath(record, "empresa.documento"),
   ];
 
   const sanctions = getValueByPath(record, "sancoes");
@@ -158,9 +209,13 @@ function collectRecordDocuments(record) {
     }
   }
 
-  return candidates
+  const deepCandidates = [];
+  collectDocumentCandidatesDeep(record, deepCandidates);
+  candidates.push(...deepCandidates);
+
+  return [...new Set(candidates
     .map((value) => cleanDocument(value))
-    .filter((value) => value.length === 14);
+    .filter((value) => value.length === 14))];
 }
 
 async function fetchJsonViaCurl(url, timeoutMs, headers) {
@@ -602,6 +657,312 @@ async function queryAcordosLeniencia(cnpj) {
       },
     ],
   };
+}
+
+function extractRecordArray(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+
+  for (const key of ["data", "items", "results", "records", "content", "value"]) {
+    if (Array.isArray(payload[key])) return payload[key];
+  }
+
+  return [payload];
+}
+
+async function queryExternalByCnpj(sourceId, cnpj, options = {}) {
+  return runSourceQuery(sourceId, async (start) => {
+    const source = getSourceConfig(sourceId);
+    const baseUrl = String(options.baseUrl ?? "").trim();
+    if (!baseUrl) {
+      return {
+        source: buildSourceStatus(sourceId, "unavailable", {
+          latencyMs: Date.now() - start,
+          statusReason: "missing_endpoint",
+          message: "Endpoint externo não configurado para esta fonte",
+        }),
+        flags: [],
+        data: [],
+      };
+    }
+
+    const headers = options.headers ?? { accept: "application/json" };
+    const params = Array.isArray(options.queryParamCandidates) && options.queryParamCandidates.length > 0
+      ? options.queryParamCandidates
+      : ["cnpj", "documento", "cpfCnpj", "cnpjCpf"];
+
+    let anySuccessNoMatch = false;
+    let unauthorized = false;
+    let networkTimeout = false;
+    let httpError = false;
+    let invalidJson = false;
+
+    for (const paramName of params) {
+      const url = new URL(baseUrl);
+      url.searchParams.set(paramName, cnpj);
+      if (!url.searchParams.has("pagina")) url.searchParams.set("pagina", "1");
+
+      const result = await fetchJsonWithCurlFallback(url.toString(), source.timeoutMs, headers);
+      if (result.kind === "success") {
+        const records = extractRecordArray(result.payload);
+        const matched = records.filter((record) => collectRecordDocuments(record).includes(cnpj));
+        if (matched.length > 0) {
+          return {
+            source: buildSourceStatus(sourceId, "success", {
+              latencyMs: Date.now() - start,
+              statusReason: "match_found",
+              evidenceCount: matched.length,
+            }),
+            flags: [],
+            data: matched,
+          };
+        }
+        anySuccessNoMatch = true;
+        continue;
+      }
+      if (result.kind === "unauthorized") {
+        unauthorized = true;
+        continue;
+      }
+      if (result.kind === "no_response") {
+        networkTimeout = true;
+        continue;
+      }
+      if (result.kind === "http_error") {
+        httpError = true;
+        continue;
+      }
+      invalidJson = true;
+    }
+
+    if (anySuccessNoMatch) {
+      return {
+        source: buildSourceStatus(sourceId, "not_found", {
+          latencyMs: Date.now() - start,
+          statusReason: "no_exact_document_match",
+        }),
+        flags: [],
+        data: [],
+      };
+    }
+
+    if (unauthorized) {
+      return {
+        source: buildSourceStatus(sourceId, "unavailable", {
+          latencyMs: Date.now() - start,
+          statusReason: "unauthorized",
+          message: "Credencial rejeitada ou acesso não autorizado",
+        }),
+        flags: [],
+        data: [],
+      };
+    }
+
+    if (networkTimeout) {
+      return {
+        source: buildSourceStatus(sourceId, "unavailable", {
+          latencyMs: Date.now() - start,
+          statusReason: "timeout_or_network",
+          message: "Falha de rede/timeout na fonte externa",
+        }),
+        flags: [],
+        data: [],
+      };
+    }
+
+    return {
+      source: buildSourceStatus(sourceId, "error", {
+        latencyMs: Date.now() - start,
+        statusReason: httpError ? "upstream_http_error" : invalidJson ? "invalid_json_response" : "unknown_error",
+        message: "Falha ao consultar fonte externa",
+      }),
+      flags: [],
+      data: [],
+    };
+  });
+}
+
+async function queryCVMSancoes(cnpj) {
+  const result = await queryExternalByCnpj("cvm_sancoes", cnpj, {
+    baseUrl: CVM_SANCOES_API_URL,
+    queryParamCandidates: ["cnpj", "documento", "cpfCnpj", "cnpjCpf"],
+    headers: { accept: "application/json" },
+  });
+  if (result.source.status !== "success") return { source: result.source, flags: [] };
+
+  const records = Array.isArray(result.data) ? result.data : [];
+  if (records.length === 0) return { source: result.source, flags: [] };
+  const sample = records[0];
+
+  return {
+    source: result.source,
+    flags: [
+      {
+        id: "cvm_sancoes",
+        source_id: "cvm_sancoes",
+        source: "CVM",
+        severity: "high",
+        title: `Empresa com ${records.length} sanção(ões) na CVM`,
+        description: "Foram encontradas sanções administrativas da CVM relacionadas ao CNPJ consultado.",
+        weight: 25,
+        evidence: [
+          { label: "Registros encontrados", value: String(records.length) },
+          ...buildEvidenceItems(sample, [
+            { label: "Processo", paths: ["numeroProcesso", "processo", "idProcesso"] },
+            { label: "Penalidade", paths: ["penalidade", "tipoSancao", "tipoPenalidade"] },
+            { label: "Data", paths: ["dataPublicacao", "dataSancao", "dataDecisao"] },
+            { label: "Órgão", paths: ["orgao", "orgaoJulgador", "autoridade"] },
+          ]),
+        ],
+      },
+    ],
+  };
+}
+
+async function queryBacenSancoes(cnpj) {
+  const result = await queryExternalByCnpj("bacen_sancoes", cnpj, {
+    baseUrl: BACEN_SANCOES_API_URL,
+    queryParamCandidates: ["cnpj", "documento", "cpfCnpj", "cnpjCpf"],
+    headers: { accept: "application/json" },
+  });
+  if (result.source.status !== "success") return { source: result.source, flags: [] };
+
+  const records = Array.isArray(result.data) ? result.data : [];
+  if (records.length === 0) return { source: result.source, flags: [] };
+  const sample = records[0];
+
+  return {
+    source: result.source,
+    flags: [
+      {
+        id: "bacen_sancoes",
+        source_id: "bacen_sancoes",
+        source: "BACEN",
+        severity: "high",
+        title: `Empresa com ${records.length} registro(s) de sanção no BACEN`,
+        description: "Foram encontrados registros de sanções/sancionados do BACEN para o documento consultado.",
+        weight: 20,
+        evidence: [
+          { label: "Registros encontrados", value: String(records.length) },
+          ...buildEvidenceItems(sample, [
+            { label: "Processo", paths: ["processo", "numeroProcesso"] },
+            { label: "Penalidade", paths: ["penalidade", "tipoSancao", "descricaoPenalidade"] },
+            { label: "Data", paths: ["dataPublicacao", "dataDecisao", "dataSancao"] },
+            { label: "Órgão", paths: ["autoridade", "orgao"] },
+          ]),
+        ],
+      },
+    ],
+  };
+}
+
+async function queryLicitacoesGov(cnpj) {
+  const result = await queryCGUByCnpj("cgu_licitacoes_contratos", "licitacoes", "cnpjFornecedor", cnpj);
+  if (result.source.status !== "success") return { source: result.source, flags: [] };
+
+  const records = Array.isArray(result.data) ? result.data : [];
+  if (records.length === 0) return { source: result.source, flags: [] };
+  const sample = records[0];
+  const totalValor = records.reduce((sum, row) => {
+    const candidate = toNumber(
+      row?.valor ?? row?.valorLicitacao ?? row?.valorContrato ?? row?.valorEmpenhado,
+      0,
+    );
+    return sum + (Number.isFinite(candidate) ? candidate : 0);
+  }, 0);
+
+  return {
+    source: result.source,
+    flags: [
+      {
+        id: "cgu_licitacoes_contratos",
+        source_id: "cgu_licitacoes_contratos",
+        source: "Portal da Transparência",
+        severity: "medium",
+        title: `Empresa com ${records.length} registro(s) de licitação/contrato público`,
+        description:
+          "Foram encontrados registros de participação em licitações/contratos públicos. Avaliar possível conflito de interesse conforme contexto de contratação.",
+        weight: 10,
+        evidence: [
+          { label: "Registros", value: String(records.length) },
+          ...(totalValor > 0
+            ? [{ label: "Valor total (soma)", value: totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) }]
+            : []),
+          ...buildEvidenceItems(sample, [
+            { label: "Órgão comprador", paths: ["orgaoEntidade.nome", "orgao.nome", "orgao"] },
+            { label: "Modalidade", paths: ["modalidadeLicitacao.descricao", "modalidade", "modalidadeCompra"] },
+            { label: "Situação", paths: ["situacaoCompra.nome", "situacao", "situacaoCompra"] },
+            { label: "Objeto", paths: ["objeto", "descricao"] },
+          ]),
+        ],
+      },
+    ],
+  };
+}
+
+async function queryCNDLProtestos(cnpj) {
+  return runSourceQuery("cndl_protestos", async (start) => {
+    if (!CNDL_PROTESTOS_API_URL) {
+      return {
+        source: buildSourceStatus("cndl_protestos", "unavailable", {
+          latencyMs: Date.now() - start,
+          statusReason: "missing_endpoint",
+          message: "CNDL sem endpoint configurado (CNDL_PROTESTOS_API_URL)",
+        }),
+        flags: [],
+      };
+    }
+    if (!CNDL_PROTESTOS_API_KEY) {
+      return {
+        source: buildSourceStatus("cndl_protestos", "unavailable", {
+          latencyMs: Date.now() - start,
+          statusReason: "missing_api_key",
+          message: "CNDL sem chave configurada (CNDL_PROTESTOS_API_KEY)",
+        }),
+        flags: [],
+      };
+    }
+
+    const result = await queryExternalByCnpj("cndl_protestos", cnpj, {
+      baseUrl: CNDL_PROTESTOS_API_URL,
+      queryParamCandidates: ["cnpj", "documento", "cpfCnpj", "cnpjCpf"],
+      headers: {
+        accept: "application/json",
+        Authorization: `Bearer ${CNDL_PROTESTOS_API_KEY}`,
+        "x-api-key": CNDL_PROTESTOS_API_KEY,
+      },
+    });
+
+    if (result.source.status !== "success") return { source: result.source, flags: [] };
+    const records = Array.isArray(result.data) ? result.data : [];
+    if (records.length === 0) return { source: result.source, flags: [] };
+    const sample = records[0];
+
+    return {
+      source: result.source,
+      flags: [
+        {
+          id: "cndl_protestos",
+          source_id: "cndl_protestos",
+          source: "CNDL / Protestos",
+          severity: records.length >= 5 ? "high" : "medium",
+          title: `Empresa com ${records.length} protesto(s) em cartório`,
+          description: "Foram encontrados protestos vinculados ao documento consultado na base CNDL.",
+          weight: records.length >= 5 ? 20 : 15,
+          evidence: [
+            { label: "Protestos", value: String(records.length) },
+            ...buildEvidenceItems(sample, [
+              { label: "Cartório", paths: ["cartorio", "nomeCartorio"] },
+              { label: "UF", paths: ["uf"] },
+              { label: "Município", paths: ["municipio", "cidade"] },
+              { label: "Data", paths: ["dataProtesto", "data"] },
+              { label: "Valor", paths: ["valor", "valorTitulo"] },
+            ]),
+          ],
+        },
+      ],
+    };
+  });
 }
 
 async function queryTCULicitantes(cnpj) {
@@ -1979,6 +2340,10 @@ export async function analyzeCnpj(cnpj) {
     tcuResult,
     mteResult,
     mteAutuacoesResult,
+    cvmResult,
+    bacenResult,
+    licitacoesResult,
+    cndlResult,
     pgfnFgtsResult,
     pgfnPrevidResult,
     pgfnNpResult,
@@ -1991,6 +2356,10 @@ export async function analyzeCnpj(cnpj) {
     queryTCULicitantes(cleanCnpj),
     queryMTETrabalhoEscravo(cleanCnpj),
     queryMTEAutuacoes(cleanCnpj),
+    queryCVMSancoes(cleanCnpj),
+    queryBacenSancoes(cleanCnpj),
+    queryLicitacoesGov(cleanCnpj),
+    queryCNDLProtestos(cleanCnpj),
     queryPGFNIndexed("pgfn_fgts", cleanCnpj, {
       flagId: "pgfn_fgts_divida_ativa",
       severity: "medium",
@@ -2043,6 +2412,10 @@ export async function analyzeCnpj(cnpj) {
     tcuResult,
     mteResult,
     mteAutuacoesResult,
+    cvmResult,
+    bacenResult,
+    licitacoesResult,
+    cndlResult,
     pgfnFgtsResult,
     pgfnPrevidResult,
     pgfnNpResult,

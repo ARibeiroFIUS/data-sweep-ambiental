@@ -92,6 +92,7 @@ const SOURCE_ID_TO_SUBSCORE = {
   cgu_cepim: "integridade",
   cgu_acordos_leniencia: "integridade",
   cgu_ceaf: "integridade",
+  cgu_licitacoes_contratos: "integridade",
   tcu_licitantes: "integridade",
   cvm_sancoes: "integridade",
   bacen_sancoes: "integridade",
