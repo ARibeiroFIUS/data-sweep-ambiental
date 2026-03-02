@@ -554,8 +554,11 @@ async function crawlEsajScope({
     };
   }
 
-  const searchPath = scope === "cpopg" ? "/cpopg/search.do" : "/cposg/search.do";
-  const pagePath = scope === "cpopg" ? "/cpopg/trocarPagina.do" : "/cposg/trocarPagina.do";
+  const cpopgPrefix = tribunalId === "tjms" ? "cpopg5" : "cpopg";
+  const searchPath =
+    scope === "cpopg" ? `/${cpopgPrefix}/search.do` : "/cposg/search.do";
+  const pagePath =
+    scope === "cpopg" ? `/${cpopgPrefix}/trocarPagina.do` : "/cposg/trocarPagina.do";
 
   const firstQuery = buildEsajSearchQuery({ scope, mode, value, page: 1 });
   const firstUrl = new URL(searchPath, baseUrl);
@@ -580,7 +583,7 @@ async function crawlEsajScope({
     };
   }
 
-  const grau = scope === "cpopg" ? "G1" : "G2";
+  const grau = scope === "cpopg" || tribunalId === "tjms" ? "G1" : "G2";
   let processes = parseEsajListRows(first.html, baseUrl, tribunalId, grau);
 
   if (processes.length === 0) {
@@ -794,14 +797,21 @@ async function runFamilyConnector({ connectorFamily, tribunal, tribunalId, query
       timeoutMs,
     });
 
+    const browserFallbackTriggerReasons = new Set([
+      "no_automatable_form",
+      "timeout_or_network",
+      "form_validation_blocked",
+      "http_503",
+      "http_504",
+    ]);
+
     const browserFallbackEligible =
       JUDICIAL_BROWSER_FALLBACK_ENABLED &&
       connectorFamily === "pje" &&
       shouldUseBrowserFallbackForTribunal(tribunalId) &&
       (queryMode === "cnpj_exact" || queryMode === "party_name") &&
-      (genericResult.status === "unavailable" ||
-        genericResult.statusReason === "no_automatable_form" ||
-        genericResult.statusReason === "timeout_or_network");
+      (browserFallbackTriggerReasons.has(String(genericResult.statusReason ?? "").trim()) ||
+        (genericResult.status === "unavailable" && !genericResult.statusReason));
 
     if (!browserFallbackEligible) {
       return genericResult;

@@ -6,13 +6,34 @@ const PJE_HOST_ALIASES = {
   trt17: ["trtes"],
   tjpi: ["tjpi.pje.jus.br"],
   tjrj: ["tjrj.pje.jus.br"],
-  tjes: ["sistemas.tjes.jus.br"],
+  tjes: ["pje.tjes.jus.br", "sistemas.tjes.jus.br"],
   tjdft: ["pje2i.tjdft.jus.br"],
   tjma: ["pje2.tjma.jus.br"],
-  tjmt: ["pje2.tjmt.jus.br"],
+  tjmt: ["consultaprocessual.tjmt.jus.br", "pje2.tjmt.jus.br"],
   trf1: ["pje1g.trf1.jus.br", "pje2g.trf1.jus.br"],
   trf3: ["pje1g.trf3.jus.br", "pje2g.trf3.jus.br"],
   trf5: ["pje1g.trf5.jus.br", "pje2g.trf5.jus.br"],
+  trf6: ["pje1g.trf6.jus.br", "pje2g.trf6.jus.br"],
+};
+
+const PJE_PRIORITY_CANDIDATES = {
+  tjpi: [
+    "https://www.tjpi.jus.br/e-tjpi/home/consulta",
+    "https://pje.tjpi.jus.br/1g/ConsultaPublica/listView.seam",
+  ],
+  tjse: [
+    "https://interface-consultaprocessual.tjse.jus.br/consultaprocessual/",
+    "https://www.tjse.jus.br/portal/consultas/nova-consulta-processual",
+  ],
+  tjgo: ["https://projudi.tjgo.jus.br/BuscaProcesso?PaginaInicial"],
+  trf6: [
+    "https://pje1g.trf6.jus.br/consultapublica/ConsultaPublica/listView.seam",
+    "https://pje2g.trf6.jus.br/consultapublica/ConsultaPublica/listView.seam",
+  ],
+  tjpa: [
+    "https://consulta-processual-unificada-prd.tjpa.jus.br/#/consulta",
+    "https://consultas.tjpa.jus.br/consultaunificada/consulta/principal",
+  ],
 };
 
 const EPROC_BASE_BY_TRIBUNAL = {
@@ -20,7 +41,7 @@ const EPROC_BASE_BY_TRIBUNAL = {
   tjms: "https://eproc.tjms.jus.br/eprocV2",
   tjrs: "https://eproc1g.tjrs.jus.br/eproc",
   tjsc: "https://eproc1g.tjsc.jus.br/eproc",
-  tjto: "https://eproc1g.tjto.jus.br/eprocV2_prod_1grau",
+  tjto: "https://eproc1.tjto.jus.br/eprocV2_prod_1grau",
 };
 
 const DEFAULT_HEADERS = {
@@ -115,6 +136,8 @@ function isCaptchaPage(html) {
   const lower = source.toLowerCase();
   const hasChallengeInput = /<input[^>]+name="answer"/i.test(source) || /<img[^>]+id="captcha/i.test(source);
   return (
+    lower.includes("cf-turnstile") ||
+    lower.includes("turnstile") ||
     lower.includes("g-recaptcha") ||
     lower.includes("h-captcha") ||
     lower.includes("tencentcaptcha") ||
@@ -321,6 +344,8 @@ function parseProcessesFromHtml(html, tribunalId, sourceUrl) {
   const numbers = text.match(processRegex) ?? [];
 
   for (const numero of numbers.slice(0, 120)) {
+    const digits = String(numero ?? "").replace(/\D/g, "");
+    if (!digits || /^0+$/.test(digits)) continue;
     if (unique.has(numero)) continue;
     unique.add(numero);
     processes.push({
@@ -485,6 +510,7 @@ async function submitForm({ form, timeoutMs, queryMode, queryValue, session, ref
 }
 
 function buildPjeCandidates(tribunalId) {
+  const priority = Array.isArray(PJE_PRIORITY_CANDIDATES[tribunalId]) ? PJE_PRIORITY_CANDIDATES[tribunalId] : [];
   const hosts = new Set();
   const aliases = PJE_HOST_ALIASES[tribunalId] ?? [];
   for (const alias of aliases) {
@@ -517,6 +543,7 @@ function buildPjeCandidates(tribunalId) {
   ];
 
   const candidates = [];
+  candidates.push(...priority);
   for (const host of hosts) {
     for (const path of paths) {
       candidates.push(`https://${host}${path}`);
@@ -587,13 +614,49 @@ function discoverSearchLinks(html, baseUrl, connectorFamily) {
     const lower = absolute.toLowerCase();
     const useful =
       (connectorFamily === "pje" &&
-        (lower.includes("consultapublica/listview.seam") || lower.includes("/consultapublica/"))) ||
+        (lower.includes("consultapublica/listview.seam") ||
+          lower.includes("/consultapublica/") ||
+          lower.includes("consultaprocessual") ||
+          lower.includes("consulta-processual-unificada"))) ||
       (connectorFamily === "esaj" &&
         (lower.includes("/cpopg/open.do") || lower.includes("/cpopg/search.do") || lower.includes("/cposg/open.do"))) ||
       (connectorFamily === "eproc" && lower.includes("externo_controlador.php?acao=processo_consulta_publica")) ||
       (connectorFamily === "projudi" && lower.includes("consultapublica.do")) ||
       (connectorFamily === "custom" && (lower.includes("consulta-processual") || lower.includes("consultapublica")));
     if (useful) links.push(absolute);
+  }
+
+  const iframeRegex = /<iframe\b[^>]*src="([^"]+)"[^>]*>/gi;
+  while ((match = iframeRegex.exec(source)) !== null) {
+    const src = String(match[1] ?? "").trim();
+    if (!src || src.startsWith("javascript:") || src.startsWith("#")) continue;
+    let absolute = "";
+    try {
+      absolute = new URL(src, baseUrl).toString();
+    } catch {
+      continue;
+    }
+    const lower = absolute.toLowerCase();
+    const useful =
+      (connectorFamily === "pje" &&
+        (lower.includes("consultaprocessual") ||
+          lower.includes("consulta-processual-unificada") ||
+          lower.includes("consultapublica"))) ||
+      (connectorFamily === "custom" && lower.includes("consulta"));
+    if (useful) links.push(absolute);
+  }
+
+  const metaRefreshRegex = /<meta\b[^>]*http-equiv="refresh"[^>]*content="[^"]*url=([^";]+)[^"]*"[^>]*>/gi;
+  while ((match = metaRefreshRegex.exec(source)) !== null) {
+    const target = String(match[1] ?? "").trim();
+    if (!target) continue;
+    let absolute = "";
+    try {
+      absolute = new URL(target, baseUrl).toString();
+    } catch {
+      continue;
+    }
+    links.push(absolute);
   }
   return Array.from(new Set(links)).slice(0, 6);
 }
@@ -680,7 +743,7 @@ export async function runGenericTribunalConnector({
   }
   const maxCandidates =
     connectorFamily === "pje"
-      ? 28
+      ? 40
       : connectorFamily === "custom"
         ? 20
         : 14;

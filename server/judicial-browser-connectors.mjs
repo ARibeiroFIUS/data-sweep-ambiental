@@ -130,6 +130,8 @@ function hasCaptcha(textOrHtml) {
   const lower = String(textOrHtml ?? "").toLowerCase();
   return (
     lower.includes("captcha") ||
+    lower.includes("turnstile") ||
+    lower.includes("cf-turnstile") ||
     lower.includes("g-recaptcha") ||
     lower.includes("h-captcha") ||
     lower.includes("sou humano") ||
@@ -138,23 +140,44 @@ function hasCaptcha(textOrHtml) {
   );
 }
 
-function hasAccessBlock(textOrHtml) {
+function hasCloudflareChallenge(textOrHtml) {
   const lower = String(textOrHtml ?? "").toLowerCase();
   return (
     lower.includes("attention required") ||
-    lower.includes("cloudflare") ||
+    lower.includes("just a moment") ||
+    lower.includes("checking your browser") ||
+    lower.includes("verify you are human") ||
+    lower.includes("ray id") ||
+    lower.includes("cf-challenge")
+  );
+}
+
+function hasAccessBlock(textOrHtml) {
+  const lower = String(textOrHtml ?? "").toLowerCase();
+  return (
+    hasCloudflareChallenge(lower) ||
     lower.includes("acesso negado") ||
     lower.includes("access denied") ||
     lower.includes("forbidden") ||
-    lower.includes("request blocked")
+    lower.includes("request blocked") ||
+    lower.includes("you don't have permission to access")
   );
 }
 
 function hasLoginRequirement(textOrHtml) {
   const lower = String(textOrHtml ?? "").toLowerCase();
+  const loginHints = lower.includes("login") || lower.includes("entrar") || lower.includes("autentica");
+  const authHints =
+    lower.includes("openid") ||
+    lower.includes("auth/realms") ||
+    lower.includes("sso.cloud.pje") ||
+    lower.includes("processo judicial eletrônico") ||
+    lower.includes("processo judicial eletronico") ||
+    lower.includes("bem-vindo ao pje") ||
+    lower.includes("gov.br");
   return (
-    (lower.includes("login") || lower.includes("entrar") || lower.includes("autentica")) &&
-    (lower.includes("pje") || lower.includes("openid") || lower.includes("sso"))
+    loginHints &&
+    authHints
   );
 }
 
@@ -205,9 +228,17 @@ function normalizeQueryValue({ queryMode, document, name }) {
   };
 }
 
+function isPlaceholderProcessNumber(value) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (!digits) return true;
+  return /^0+$/.test(digits);
+}
+
 function parseProcessesFromText(text, tribunalId, sourceUrl) {
   const found = String(text ?? "").match(PROCESS_NUMBER_REGEX) ?? [];
-  const unique = Array.from(new Set(found)).slice(0, 120);
+  const unique = Array.from(new Set(found))
+    .filter((numeroProcesso) => !isPlaceholderProcessNumber(numeroProcesso))
+    .slice(0, 120);
   return unique.map((numeroProcesso) => ({
     tribunal: tribunalId,
     numeroProcesso,
@@ -247,6 +278,51 @@ async function fillFirstInteractive(page, selectors, value) {
   return false;
 }
 
+async function fillFirstVisibleTextInput(page, value) {
+  const locator = page.locator("input[type='text'], input[type='search'], input:not([type]), textarea");
+  const count = await locator.count().catch(() => 0);
+  if (!count) return false;
+  const limit = Math.min(8, count);
+  for (let index = 0; index < limit; index += 1) {
+    const candidate = locator.nth(index);
+    const visible = await candidate.isVisible().catch(() => false);
+    const enabled = await candidate.isEnabled().catch(() => false);
+    if (!visible || !enabled) continue;
+    await candidate.fill("").catch(() => {});
+    await candidate.fill(value).catch(() => {});
+    const current = await candidate.inputValue().catch(() => "");
+    if (String(current ?? "").trim()) return true;
+  }
+  return false;
+}
+
+function getInteractionTargets(page) {
+  const targets = [page];
+  const frameList = typeof page?.frames === "function" ? page.frames() : [];
+  for (const frame of frameList) {
+    const isMain = typeof page?.mainFrame === "function" && frame === page.mainFrame();
+    if (isMain) continue;
+    targets.push(frame);
+  }
+  return targets;
+}
+
+async function fillAcrossTargets(page, selectors, value) {
+  for (const target of getInteractionTargets(page)) {
+    const ok = await fillFirstInteractive(target, selectors, value);
+    if (ok) return true;
+  }
+  return false;
+}
+
+async function fillAnyAcrossTargets(page, value) {
+  for (const target of getInteractionTargets(page)) {
+    const ok = await fillFirstVisibleTextInput(target, value);
+    if (ok) return true;
+  }
+  return false;
+}
+
 async function trySelectOptionByText(page, optionPattern) {
   return page
     .evaluate((patternSource) => {
@@ -280,23 +356,35 @@ async function clickFirstVisible(page, selectors) {
   return false;
 }
 
+async function clickAcrossTargets(page, selectors) {
+  for (const target of getInteractionTargets(page)) {
+    const ok = await clickFirstVisible(target, selectors);
+    if (ok) return true;
+  }
+  return false;
+}
+
 async function chooseDocumentSearchMode(page) {
-  await trySelectOptionByText(page, /(documento|cpf\/?cnpj|cpf|cnpj)/i);
-  await clickFirstVisible(page, [
-    "label:has-text('CPF/CNPJ')",
-    "label:has-text('CPF')",
-    "label:has-text('CNPJ')",
-    "label:has-text('Documento')",
-    "input[type='radio'][value*='DOC' i]",
-  ]);
+  for (const target of getInteractionTargets(page)) {
+    await trySelectOptionByText(target, /(documento|cpf\/?cnpj|cpf|cnpj)/i);
+    await clickFirstVisible(target, [
+      "label:has-text('CPF/CNPJ')",
+      "label:has-text('CPF')",
+      "label:has-text('CNPJ')",
+      "label:has-text('Documento')",
+      "input[type='radio'][value*='DOC' i]",
+    ]);
+  }
 }
 
 async function chooseNameSearchMode(page) {
-  await trySelectOptionByText(page, /(nome da parte|nome|parte)/i);
-  await clickFirstVisible(page, [
-    "label:has-text('Nome da Parte')",
-    "label:has-text('Nome')",
-  ]);
+  for (const target of getInteractionTargets(page)) {
+    await trySelectOptionByText(target, /(nome da parte|nome|parte)/i);
+    await clickFirstVisible(target, [
+      "label:has-text('Nome da Parte')",
+      "label:has-text('Nome')",
+    ]);
+  }
 }
 
 export async function runBrowserTribunalConnector({
@@ -380,7 +468,7 @@ export async function runBrowserTribunalConnector({
     page.setDefaultTimeout(Math.min(navTimeoutMs, 60000));
 
     await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: navTimeoutMs });
-    await page.waitForTimeout(1200);
+    await page.waitForTimeout(2200);
 
     const beforeHtml = await page.content().catch(() => "");
     const beforeText = await page.locator("body").innerText().catch(() => "");
@@ -430,7 +518,7 @@ export async function runBrowserTribunalConnector({
 
     const value = normalized.value;
     const filled = queryMode === "cnpj_exact"
-      ? await fillFirstInteractive(
+      ? await fillAcrossTargets(
           page,
           [
             "input[name*='cnpj' i]",
@@ -441,15 +529,22 @@ export async function runBrowserTribunalConnector({
             "input[id*='documento' i]",
             "input[name*='doc' i]",
             "input[id*='doc' i]",
+            "input[formcontrolname*='cnpj' i]",
+            "input[formcontrolname*='cpf' i]",
+            "input[formcontrolname*='doc' i]",
+            "input[formcontrolname*='parte' i]",
             "input[placeholder*='cpf' i]",
             "input[placeholder*='cnpj' i]",
+            "input[placeholder*='documento' i]",
+            "input[placeholder*='parte' i]",
+            "input[placeholder*='buscar' i]",
             "input[aria-label*='cpf' i]",
             "input[aria-label*='cnpj' i]",
             "input[name*='parte' i]",
           ],
           value,
         )
-      : await fillFirstInteractive(
+      : await fillAcrossTargets(
           page,
           [
             "input[name*='nomeparte' i]",
@@ -458,12 +553,19 @@ export async function runBrowserTribunalConnector({
             "input[id*='parte' i]",
             "input[name*='nome' i]",
             "input[id*='nome' i]",
+            "input[formcontrolname*='nome' i]",
+            "input[formcontrolname*='parte' i]",
             "input[placeholder*='nome' i]",
+            "input[placeholder*='parte' i]",
+            "input[placeholder*='buscar' i]",
+            "input[placeholder*='cpf' i]",
           ],
           value,
         );
 
-    if (!filled) {
+    const filledWithFallback = filled || (await fillAnyAcrossTargets(page, value));
+
+    if (!filledWithFallback) {
       return {
         connectorFamily,
         queryMode,
@@ -476,7 +578,7 @@ export async function runBrowserTribunalConnector({
       };
     }
 
-    const submitted = await clickFirstVisible(page, [
+    const submitted = await clickAcrossTargets(page, [
       "button:has-text('Pesquisar')",
       "input[type='submit'][value*='Pesquisar' i]",
       "button:has-text('Consultar')",
@@ -522,7 +624,7 @@ export async function runBrowserTribunalConnector({
       };
     }
 
-    const processes = parseProcessesFromText(pageSource, tribunalId, page.url());
+    const processes = parseProcessesFromText(text, tribunalId, page.url());
     if (processes.length > 0) {
       return {
         connectorFamily,

@@ -91,7 +91,7 @@ const TJS = [
   ["tjgo", "Tribunal de Justiça de Goiás", "GO", "pje"],
   ["tjma", "Tribunal de Justiça do Maranhão", "MA", "pje"],
   ["tjmg", "Tribunal de Justiça de Minas Gerais", "MG", "pje"],
-  ["tjms", "Tribunal de Justiça do Mato Grosso do Sul", "MS", "eproc"],
+  ["tjms", "Tribunal de Justiça do Mato Grosso do Sul", "MS", "esaj"],
   ["tjmt", "Tribunal de Justiça do Mato Grosso", "MT", "pje"],
   ["tjpa", "Tribunal de Justiça do Pará", "PA", "pje"],
   ["tjpb", "Tribunal de Justiça da Paraíba", "PB", "pje"],
