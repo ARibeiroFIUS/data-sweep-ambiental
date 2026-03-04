@@ -1,0 +1,45 @@
+{
+  "family": "pje",
+  "source": "Raspado em 2026-02 do TRF1 Consulta Pública (listView.seam)",
+  "method": "POST",
+  "contentType": "application/x-www-form-urlencoded",
+  "requiresViewState": true,
+  "formId": "fPP",
+  "submitButton": {
+    "name": "fPP:searchProcessos",
+    "value": "Pesquisar"
+  },
+  "fields": {
+    "process_number": {
+      "name": "fPP:numProcesso-inputNumeroProcessoDecoration:numProcesso-inputNumeroProcesso",
+      "alt": "Número do processo"
+    },
+    "party_name": {
+      "name": "fPP:dnp:nomeParte",
+      "alt": "Nome da parte"
+    },
+    "document": {
+      "name": "fPP:dpDec:documentoParte",
+      "alt": "CPF/CNPJ",
+      "hint": "Enviar só dígitos (14 CNPJ, 11 CPF)"
+    },
+    "lawyer_name": {
+      "name": "fPP:j_id184:nomeAdv",
+      "alt": "Nome do advogado"
+    },
+    "oab_number": {
+      "name": "fPP:Decoration:numeroOAB"
+    },
+    "oab_uf": {
+      "name": "fPP:Decoration:estadoComboOAB"
+    },
+    "viewState": {
+      "name": "javax.faces.ViewState",
+      "hint": "Obter do GET na página"
+    }
+  },
+  "selectors": {
+    "processTable": "fPP:processosTable",
+    "processTableBody": "fPP:processosTable:tb"
+  }
+}

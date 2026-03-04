@@ -1,0 +1,46 @@
+{
+  "family": "projudi",
+  "tribunal_id": "tjpr",
+  "source": "Raspado em 2026-02 de projudi.tjpr.jus.br/projudi_consulta/",
+  "method": "POST",
+  "contentType": "application/x-www-form-urlencoded",
+  "baseUrl": "https://projudi.tjpr.jus.br/projudi_consulta",
+  "formInitiar": "/projudi_consulta/processo/consultaPublica.do?actionType=iniciar",
+  "formActionPesquisar": "/projudi_consulta/processo/consultaPublica.do?actionType=pesquisar",
+  "formId": "buscaProcessoForm",
+  "formName": "processoBuscaForm",
+  "opcaoConsultaPublica": {
+    "por_numero": "1",
+    "por_nome_cnpj_comarca": "2"
+  },
+  "fields": {
+    "numeroProcesso": { "name": "numeroProcesso", "hint": "Quando opcaoConsultaPublica=1" },
+    "nomeParte": { "name": "nomeParte", "hint": "Nome da parte" },
+    "cpfCnpj": { "name": "cpfCnpj", "hint": "CPF/CNPJ só dígitos" },
+    "codComarca": { "name": "codComarca", "hint": "Obrigatório para busca por parte; -1 = Selecione" },
+    "codVara": { "name": "codVara" },
+    "nomeAdvogado": { "name": "nomeAdvogado" },
+    "oab": { "name": "oab" },
+    "oabUF": { "name": "oabUF" },
+    "opcaoConsultaPublica": { "name": "opcaoConsultaPublica" },
+    "opcaoConsultaPublicaHidden": { "name": "opcaoConsultaPublicaHidden" },
+    "answer": { "name": "answer", "hint": "Resposta do captcha" }
+  },
+  "hiddenRequired": [
+    "processoPageSize",
+    "processoPageNumber",
+    "processoSortColumn",
+    "processoSortOrder",
+    "codVaraEscolhida",
+    "codTribunal"
+  ],
+  "captcha": {
+    "imageUrl": "/projudi_consulta/captcha",
+    "answerField": "answer"
+  },
+  "restricoes": [
+    "Processos de família: sigilosos",
+    "Criminais: só por número",
+    "Criminais arquivados: não consultáveis"
+  ]
+}
