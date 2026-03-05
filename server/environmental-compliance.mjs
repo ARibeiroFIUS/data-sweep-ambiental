@@ -1729,18 +1729,7 @@ function buildFteDeterministicFallbackAnalysis(cnaes, reason) {
           "Necessária confirmação da FTE específica com evidências textuais oficiais.",
         ],
         ftes_relacionadas: category
-          ? [
-              {
-                codigo: String(category.id),
-                titulo: `Cat. ${category.id} - ${category.name}`,
-                categoria: category.name,
-                justificativa:
-                  match?.matchType === "prefix"
-                    ? "Match preliminar por prefixo CNAE."
-                    : "Match preliminar por similaridade textual da descrição.",
-                url: "https://www.gov.br/ibama/pt-br/servicos/cadastros/ctf/ctf-app/ftes/ftes-por-categorias",
-              },
-            ]
+          ? [buildDeterministicFteReference(category, match?.matchType)].filter(Boolean)
           : [],
       },
       cnae
