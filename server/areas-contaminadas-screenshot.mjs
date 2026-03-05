@@ -134,7 +134,7 @@ async function launchChromium() {
   const systemChromiumPath = await resolveSystemChromiumPath();
   const launchOptions = {
     headless: process.env.AREAS_CAPTURE_HEADLESS !== "false",
-    args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--single-process", "--no-zygote"],
+    args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
   };
 
   try {
