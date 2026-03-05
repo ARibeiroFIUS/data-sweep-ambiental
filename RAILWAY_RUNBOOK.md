@@ -21,10 +21,12 @@ Variáveis recomendadas para compliance ambiental com cache inteligente:
 
 - `ENV_COMPLIANCE_REUSE_WINDOW_DAYS` (opcional, default `30`)
 - `ENV_COMPLIANCE_REUSE_ENABLED` (opcional, default `true`)
-- `OPENAI_FTE_RAG_TIMEOUT_MS` (opcional, default `18000`)
-- `OPENAI_FTE_RAG_RETRY_TIMEOUT_MS` (opcional, default `0`)
-- `OPENAI_FTE_RAG_CNAE_LIMIT` (opcional, default `8`)
-- `OPENAI_FTE_RAG_MAX_OUTPUT_TOKENS` (opcional, default `3200`)
+- `OPENAI_FTE_RAG_TIMEOUT_MS` (opcional, default `28000`)
+- `OPENAI_FTE_RAG_RETRY_TIMEOUT_MS` (opcional, default `36000`)
+- `OPENAI_FTE_RAG_CNAE_LIMIT` (opcional, default `6`)
+- `OPENAI_FTE_RAG_MAX_OUTPUT_TOKENS` (opcional, default `2600`)
+- `OPENAI_FTE_RAG_TEMPERATURE` (opcional, default `0`)
+- `ENV_COMPLIANCE_RAG_STABILITY_REUSE_DAYS` (opcional, default `120`)
 - `OPENAI_RELATORIO_TIMEOUT_MS` (opcional, default `15000`)
 
 ## 3) Migração do Postgres

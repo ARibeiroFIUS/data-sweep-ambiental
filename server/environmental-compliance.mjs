@@ -19,10 +19,11 @@ const OPENAI_FTE_VECTOR_STORE_ID = (
   ""
 )
   .trim();
-const OPENAI_FTE_RAG_TIMEOUT_MS = Number.parseInt(process.env.OPENAI_FTE_RAG_TIMEOUT_MS ?? "18000", 10);
-const OPENAI_FTE_RAG_RETRY_TIMEOUT_MS = Number.parseInt(process.env.OPENAI_FTE_RAG_RETRY_TIMEOUT_MS ?? "0", 10);
-const OPENAI_FTE_RAG_CNAE_LIMIT = Number.parseInt(process.env.OPENAI_FTE_RAG_CNAE_LIMIT ?? "8", 10);
-const OPENAI_FTE_RAG_MAX_OUTPUT_TOKENS = Number.parseInt(process.env.OPENAI_FTE_RAG_MAX_OUTPUT_TOKENS ?? "3200", 10);
+const OPENAI_FTE_RAG_TIMEOUT_MS = Number.parseInt(process.env.OPENAI_FTE_RAG_TIMEOUT_MS ?? "28000", 10);
+const OPENAI_FTE_RAG_RETRY_TIMEOUT_MS = Number.parseInt(process.env.OPENAI_FTE_RAG_RETRY_TIMEOUT_MS ?? "36000", 10);
+const OPENAI_FTE_RAG_CNAE_LIMIT = Number.parseInt(process.env.OPENAI_FTE_RAG_CNAE_LIMIT ?? "6", 10);
+const OPENAI_FTE_RAG_MAX_OUTPUT_TOKENS = Number.parseInt(process.env.OPENAI_FTE_RAG_MAX_OUTPUT_TOKENS ?? "2600", 10);
+const OPENAI_FTE_RAG_TEMPERATURE = Number.parseFloat(process.env.OPENAI_FTE_RAG_TEMPERATURE ?? "0");
 const OPENAI_RELATORIO_TIMEOUT_MS = Number.parseInt(process.env.OPENAI_RELATORIO_TIMEOUT_MS ?? "15000", 10);
 const ORCHESTRATION_VERSION = "2026.03.05.1";
 const SEMIL_AREAS_CONTAMINADAS_APP_ID = "77da778c122c4ccda8a8d6babce61b6b";
@@ -1222,6 +1223,19 @@ function mapProbabilityLevel(value) {
   return "indefinida";
 }
 
+function trimText(value, maxChars = 280) {
+  const text = pickString(value);
+  if (!text) return null;
+  if (!Number.isFinite(maxChars) || maxChars <= 0) return text;
+  return text.length > maxChars ? `${text.slice(0, maxChars - 1)}…` : text;
+}
+
+function limitStringArray(values, maxItems = 2) {
+  const normalized = normalizeStringArray(values);
+  const safeMax = Math.max(0, Number.parseInt(String(maxItems), 10) || 0);
+  return safeMax > 0 ? normalized.slice(0, safeMax) : [];
+}
+
 function parseJsonObjectFromText(text) {
   const content = String(text ?? "").trim();
   if (!content) return null;
@@ -1329,12 +1343,12 @@ function extractOpenAiFileCitations(payload) {
 function normalizeFteReference(entry) {
   if (!entry || typeof entry !== "object") return null;
 
-  const codigo = pickString(entry?.codigo ?? entry?.fte_codigo ?? entry?.id);
-  const titulo = pickString(entry?.titulo ?? entry?.nome ?? entry?.fte ?? entry?.referencia ?? entry?.title);
-  const categoria = pickString(entry?.categoria ?? entry?.categoria_fte);
-  const justificativa = pickString(entry?.justificativa ?? entry?.encaixe ?? entry?.match_reason ?? entry?.rationale);
-  const url = pickString(entry?.url ?? entry?.link ?? entry?.fonte);
-  const trecho = pickString(entry?.trecho ?? entry?.citacao ?? entry?.quote);
+  const codigo = trimText(entry?.codigo ?? entry?.fte_codigo ?? entry?.id, 40);
+  const titulo = trimText(entry?.titulo ?? entry?.nome ?? entry?.fte ?? entry?.referencia ?? entry?.title, 180);
+  const categoria = trimText(entry?.categoria ?? entry?.categoria_fte, 160);
+  const justificativa = trimText(entry?.justificativa ?? entry?.encaixe ?? entry?.match_reason ?? entry?.rationale, 220);
+  const url = trimText(entry?.url ?? entry?.link ?? entry?.fonte, 300);
+  const trecho = trimText(entry?.trecho ?? entry?.citacao ?? entry?.quote, 300);
 
   if (!codigo && !titulo && !justificativa && !url && !trecho) return null;
 
@@ -1349,8 +1363,8 @@ function normalizeFteReference(entry) {
 }
 
 function normalizeFteDeepFinding(entry, fallbackCnae = null) {
-  const cnaeCodigo = pickString(entry?.cnae_codigo ?? entry?.cnae ?? entry?.codigo ?? fallbackCnae?.codigo ?? "");
-  const cnaeDescricao = pickString(entry?.cnae_descricao ?? entry?.descricao ?? fallbackCnae?.descricao ?? "");
+  const cnaeCodigo = trimText(entry?.cnae_codigo ?? entry?.cnae ?? entry?.codigo ?? fallbackCnae?.codigo ?? "", 20);
+  const cnaeDescricao = trimText(entry?.cnae_descricao ?? entry?.descricao ?? fallbackCnae?.descricao ?? "", 260);
   const principal =
     typeof entry?.principal === "boolean"
       ? entry.principal
@@ -1380,12 +1394,12 @@ function normalizeFteDeepFinding(entry, fallbackCnae = null) {
     probabilidade_enquadramento: mapProbabilityLevel(
       entry?.probabilidade_enquadramento ?? entry?.probabilidade ?? entry?.probability ?? entry?.confianca
     ),
-    tese_enquadramento: pickString(entry?.tese_enquadramento ?? entry?.tese ?? entry?.analise ?? entry?.argumentacao),
-    obrigacoes: normalizeStringArray(entry?.obrigacoes ?? entry?.obligations),
-    riscos_juridicos: normalizeStringArray(entry?.riscos_juridicos ?? entry?.legal_risks),
-    recomendacoes_acao: normalizeStringArray(entry?.recomendacoes_acao ?? entry?.recomendacoes ?? entry?.actions),
-    lacunas: normalizeStringArray(entry?.lacunas ?? entry?.gaps),
-    ftes_relacionadas: normalizedReferences,
+    tese_enquadramento: trimText(entry?.tese_enquadramento ?? entry?.tese ?? entry?.analise ?? entry?.argumentacao, 320),
+    obrigacoes: limitStringArray(entry?.obrigacoes ?? entry?.obligations, 2),
+    riscos_juridicos: limitStringArray(entry?.riscos_juridicos ?? entry?.legal_risks, 2),
+    recomendacoes_acao: limitStringArray(entry?.recomendacoes_acao ?? entry?.recomendacoes ?? entry?.actions, 2),
+    lacunas: limitStringArray(entry?.lacunas ?? entry?.gaps, 3),
+    ftes_relacionadas: normalizedReferences.slice(0, 2),
   };
 }
 
@@ -1446,6 +1460,97 @@ function normalizeFteDeepAnalysisPayload(raw, cnaes, fallbackText = "") {
     legal_risks: normalizeStringArray(sourceObject?.legal_risks ?? sourceObject?.riscos_legais),
     stats: {
       total_findings: normalizedFindings.length,
+      high_risk_findings: highRiskFindings,
+      medium_risk_findings: mediumRiskFindings,
+      low_risk_findings: lowRiskFindings,
+    },
+  };
+}
+
+function hasLegalReferenceSupport(finding) {
+  const refs = Array.isArray(finding?.ftes_relacionadas) ? finding.ftes_relacionadas : [];
+  return refs.some((ref) => Boolean(pickString(ref?.codigo) || pickString(ref?.titulo) || pickString(ref?.url) || pickString(ref?.trecho)));
+}
+
+function applyLegalStabilityGuards({ analysis, cnaes, citations }) {
+  const sourceAnalysis = analysis && typeof analysis === "object" ? analysis : {};
+  const sourceFindings = Array.isArray(sourceAnalysis?.findings) ? sourceAnalysis.findings : [];
+  const knownByCode = new Map(
+    (Array.isArray(cnaes) ? cnaes : [])
+      .map((item) => [normalizeCnaeCode(item?.codigo), item])
+      .filter(([code]) => Boolean(code))
+  );
+
+  const hasGlobalCitations = Array.isArray(citations) && citations.length > 0;
+  const reviewedFindings = sourceFindings
+    .map((rawItem) => {
+      const item = normalizeFteDeepFinding(rawItem, knownByCode.get(normalizeCnaeCode(rawItem?.cnae_codigo)));
+      const cnaeCode = normalizeCnaeCode(item?.cnae_codigo);
+      const baseCnae = knownByCode.get(cnaeCode) ?? {
+        codigo: item?.cnae_codigo,
+        descricao: item?.cnae_descricao,
+        principal: item?.principal,
+      };
+      const deterministicMatch = matchFteCategoryForCnae(baseCnae);
+      const hasReference = hasLegalReferenceSupport(item);
+      const next = {
+        ...item,
+        obrigacoes: limitStringArray(item?.obrigacoes, 2),
+        riscos_juridicos: limitStringArray(item?.riscos_juridicos, 2),
+        recomendacoes_acao: limitStringArray(item?.recomendacoes_acao, 2),
+        lacunas: limitStringArray(item?.lacunas, 3),
+      };
+
+      // Guardrail jurídico: sem base de referência, não sustentar risco alto.
+      if (!hasReference && !hasGlobalCitations) {
+        next.risco = "nao_classificado";
+        next.probabilidade_enquadramento = "indefinida";
+        next.lacunas = limitStringArray(
+          [
+            ...next.lacunas,
+            "Sem citação verificável nesta execução; necessário parecer técnico-jurídico com FTE oficial.",
+          ],
+          3
+        );
+      }
+
+      // Guardrail de consistência: sem aderência determinística, reduzir confiança de classificações agressivas.
+      if (!deterministicMatch && (next.risco === "alto" || next.probabilidade_enquadramento === "alta")) {
+        next.risco = next.risco === "alto" ? "medio" : next.risco;
+        next.probabilidade_enquadramento = next.probabilidade_enquadramento === "alta" ? "media" : next.probabilidade_enquadramento;
+        next.lacunas = limitStringArray(
+          [
+            ...next.lacunas,
+            "Classificação ajustada por consistência: sem aderência determinística clara no mapeamento CNAE x FTE.",
+          ],
+          3
+        );
+      }
+
+      if (next.risco !== "nao_classificado" && next.obrigacoes.length === 0) {
+        next.obrigacoes = [
+          "Formalizar enquadramento com base na FTE oficial e registrar parecer técnico-jurídico de suporte.",
+        ];
+      }
+
+      return next;
+    })
+    .sort((a, b) => {
+      if (Boolean(b.principal) !== Boolean(a.principal)) return Number(Boolean(b.principal)) - Number(Boolean(a.principal));
+      return String(a.cnae_codigo ?? "").localeCompare(String(b.cnae_codigo ?? ""), "pt-BR");
+    });
+
+  const highRiskFindings = reviewedFindings.filter((item) => item.risco === "alto").length;
+  const mediumRiskFindings = reviewedFindings.filter((item) => item.risco === "medio").length;
+  const lowRiskFindings = reviewedFindings.filter((item) => item.risco === "baixo").length;
+
+  return {
+    executive_summary: trimText(sourceAnalysis?.executive_summary, 1600),
+    findings: reviewedFindings,
+    overall_recommendations: limitStringArray(sourceAnalysis?.overall_recommendations, 4),
+    legal_risks: limitStringArray(sourceAnalysis?.legal_risks, 4),
+    stats: {
+      total_findings: reviewedFindings.length,
       high_risk_findings: highRiskFindings,
       medium_risk_findings: mediumRiskFindings,
       low_risk_findings: lowRiskFindings,
@@ -1826,7 +1931,7 @@ async function generateFteDeepCnaeAnalysis({ company }) {
 
   const requestPayload = {
     model: OPENAI_FTE_MODEL,
-    temperature: 0.1,
+    temperature: Math.max(0, Math.min(0.2, Number.isFinite(OPENAI_FTE_RAG_TEMPERATURE) ? OPENAI_FTE_RAG_TEMPERATURE : 0)),
     input: [
       {
         role: "system",
@@ -1847,14 +1952,14 @@ async function generateFteDeepCnaeAnalysis({ company }) {
     max_output_tokens: ragMaxOutputTokens,
   };
 
-  const runFteOpenAiRequest = (timeoutMs) =>
+  const runFteOpenAiRequest = (payloadInput, timeoutMs) =>
     fetchWithTimeout("https://api.openai.com/v1/responses", timeoutMs, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${OPENAI_API_KEY}`,
       },
-      body: JSON.stringify(requestPayload),
+      body: JSON.stringify(payloadInput),
     });
 
   const configuredPrimaryTimeout =
@@ -1866,11 +1971,11 @@ async function generateFteDeepCnaeAnalysis({ company }) {
       ? Math.min(45000, Math.max(primaryTimeout + 1000, configuredRetryTimeout))
       : primaryTimeout;
 
-  let response = await runFteOpenAiRequest(primaryTimeout);
+  let response = await runFteOpenAiRequest(requestPayload, primaryTimeout);
   let retryUsed = false;
   if (!response && retryTimeout > primaryTimeout) {
     retryUsed = true;
-    response = await runFteOpenAiRequest(retryTimeout);
+    response = await runFteOpenAiRequest(requestPayload, retryTimeout);
   }
 
   if (!response) {
@@ -1920,8 +2025,8 @@ async function generateFteDeepCnaeAnalysis({ company }) {
     };
   }
 
-  const parsedObject = parseJsonObjectFromText(outputText);
-  const normalized = normalizeFteDeepAnalysisPayload(parsedObject, cnaes, outputText);
+  let parsedObject = parseJsonObjectFromText(outputText);
+  let effectiveOutputText = outputText;
   const citations = extractOpenAiFileCitations(payload);
   const inputTokens = Number(payload?.usage?.input_tokens ?? payload?.usage?.prompt_tokens);
   const outputTokens = Number(payload?.usage?.output_tokens ?? payload?.usage?.completion_tokens);
@@ -1929,6 +2034,46 @@ async function generateFteDeepCnaeAnalysis({ company }) {
     Number.isFinite(outputTokens) && Number.isFinite(requestPayload.max_output_tokens)
       ? outputTokens >= Number(requestPayload.max_output_tokens) - 15
       : false;
+
+  if (!parsedObject && tokenCapReached && cnaesForRag.length > 3) {
+    const compactSystemPrompt = `${systemPrompt}\nRetorne JSON compacto e válido, sem markdown e sem texto fora do objeto JSON.`;
+    const compactUserPrompt = `Reprocessar apenas os CNAEs de maior materialidade para evitar truncamento.\n\n${JSON.stringify(
+      {
+        cnpj: company?.cnpj ?? null,
+        razao_social: company?.razao_social ?? null,
+        cnaes_priorizados_para_rag: cnaesForRag.slice(0, 3),
+        modo_recuperacao: "truncation_recovery",
+      },
+      null,
+      2
+    )}`;
+    const compactPayload = {
+      ...requestPayload,
+      max_output_tokens: Math.max(1400, Math.floor(ragMaxOutputTokens * 0.7)),
+      input: [
+        { role: "system", content: [{ type: "input_text", text: compactSystemPrompt }] },
+        { role: "user", content: [{ type: "input_text", text: compactUserPrompt }] },
+      ],
+    };
+    const compactResponse = await runFteOpenAiRequest(compactPayload, Math.max(12000, primaryTimeout - 2000));
+    if (compactResponse?.ok) {
+      const compactPayloadResponse = await parseJsonResponse(compactResponse);
+      const compactOutputText = extractOpenAiResponseText(compactPayloadResponse);
+      const compactParsed = parseJsonObjectFromText(compactOutputText);
+      if (compactParsed) {
+        parsedObject = compactParsed;
+        effectiveOutputText = compactOutputText;
+        const compactCitations = extractOpenAiFileCitations(compactPayloadResponse);
+        for (const citation of compactCitations) {
+          const key = `${citation?.file_id ?? ""}|${citation?.filename ?? ""}|${citation?.quote ?? ""}`;
+          const already = citations.some(
+            (current) => `${current?.file_id ?? ""}|${current?.filename ?? ""}|${current?.quote ?? ""}` === key
+          );
+          if (!already) citations.push(citation);
+        }
+      }
+    }
+  }
 
   if (!parsedObject) {
     const fallbackAnalysis = buildFteDeterministicFallbackAnalysis(
@@ -1963,9 +2108,15 @@ async function generateFteDeepCnaeAnalysis({ company }) {
     };
   }
 
+  const normalized = normalizeFteDeepAnalysisPayload(parsedObject, cnaes, effectiveOutputText);
+  const reviewed = applyLegalStabilityGuards({
+    analysis: normalized,
+    cnaes,
+    citations,
+  });
   const analysis = {
     available: true,
-    ...normalized,
+    ...reviewed,
     citations,
     model: OPENAI_FTE_MODEL,
     vector_store_id: OPENAI_FTE_VECTOR_STORE_ID,

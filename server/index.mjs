@@ -13,6 +13,7 @@ import {
   ensureEnvironmentalComplianceTables,
   getEnvironmentalAnalysisRun,
   getLatestEnvironmentalAnalysisRunByCnpj,
+  getLatestSuccessfulFteRagRunByCnpj,
   isEnvironmentalComplianceStoreEnabled,
   listActionPlanItems,
   listEnvironmentalAnalysisRuns,
@@ -72,6 +73,10 @@ let pgfnSyncInFlight = null;
 const ENV_ANALYSIS_CACHE_MAX = 200;
 const ENV_COMPLIANCE_REUSE_WINDOW_DAYS = Math.max(1, Number.parseInt(process.env.ENV_COMPLIANCE_REUSE_WINDOW_DAYS ?? "30", 10) || 30);
 const ENV_COMPLIANCE_REUSE_ENABLED = parseBooleanEnv(process.env.ENV_COMPLIANCE_REUSE_ENABLED, true);
+const ENV_COMPLIANCE_RAG_STABILITY_REUSE_DAYS = Math.max(
+  30,
+  Number.parseInt(process.env.ENV_COMPLIANCE_RAG_STABILITY_REUSE_DAYS ?? "120", 10) || 120
+);
 const environmentalRunCache = new Map();
 
 const MIME_TYPES = {
@@ -255,6 +260,103 @@ function getLatestCachedEnvironmentalRunByCnpj({ cnpj = "", maxAgeDays = ENV_COM
   const ageDays = computeAgeDays(referenceDate);
   if (ageDays == null || ageDays > safeMaxAgeDays) return null;
   return latest;
+}
+
+function applyStableRagFromPreviousRun(currentPayload, previousRun, normalizedCnpj) {
+  const current = currentPayload && typeof currentPayload === "object" ? currentPayload : null;
+  const previousPayload = previousRun?.payload_json && typeof previousRun.payload_json === "object" ? previousRun.payload_json : null;
+  if (!current || !previousPayload) return currentPayload;
+
+  const currentRag = current?.fte_deep_analysis;
+  const previousRag = previousPayload?.fte_deep_analysis;
+  const currentAvailable = Boolean(currentRag?.available);
+  const previousAvailable = Boolean(previousRag?.available);
+  if (currentAvailable || !previousAvailable) return currentPayload;
+
+  const reusedAt =
+    previousPayload?.analyzed_at ||
+    previousRun?.created_at ||
+    null;
+  const reusedAnalysisId = String(previousRun?.analysis_id ?? previousPayload?.analysis_id ?? "").trim() || null;
+
+  const nextPayload = {
+    ...current,
+    fte_deep_analysis: {
+      ...previousRag,
+      reused_previous_success: true,
+      reused_from_analysis_id: reusedAnalysisId,
+      reused_from_analyzed_at: reusedAt,
+      stability_note:
+        "RAG da execução atual indisponível; aplicado último parecer CNAE x FTE válido para manter consistência jurídico-técnica.",
+    },
+  };
+
+  const sources = Array.isArray(current?.sources) ? current.sources : [];
+  let ragSourceTouched = false;
+  const nextSources = sources.map((source) => {
+    if (source?.id !== "openai_fte_rag") return source;
+    ragSourceTouched = true;
+    return {
+      ...source,
+      status: "success",
+      status_reason: "reused_previous_success",
+      message:
+        "RAG reaproveitado da última execução bem-sucedida para reduzir oscilação e preservar consistência jurídico-técnica.",
+      latency_ms: source?.latency_ms ?? 0,
+      evidence_count:
+        Number(source?.evidence_count ?? 0) > 0
+          ? Number(source.evidence_count)
+          : Math.max(1, Number(nextPayload?.fte_deep_analysis?.stats?.total_findings ?? 0)),
+    };
+  });
+  if (!ragSourceTouched) {
+    nextSources.push({
+      id: "openai_fte_rag",
+      name: "OpenAI — RAG FTE (CNAE x Enquadramento)",
+      status: "success",
+      status_reason: "reused_previous_success",
+      latency_ms: 0,
+      evidence_count: Math.max(1, Number(nextPayload?.fte_deep_analysis?.stats?.total_findings ?? 0)),
+      message: "RAG reaproveitado da última execução bem-sucedida para estabilidade de parecer.",
+    });
+  }
+  nextPayload.sources = nextSources;
+
+  const previousDateLabel = formatDateTimePtBr(reusedAt);
+  nextPayload.disclaimers = [
+    ...(Array.isArray(current?.disclaimers) ? current.disclaimers : []),
+    previousDateLabel
+      ? `RAG CNAE x FTE reaproveitado da execução de ${previousDateLabel} para manter consistência técnica.`
+      : "RAG CNAE x FTE reaproveitado de execução anterior para manter consistência técnica.",
+  ];
+
+  if (nextPayload?.orchestration && Array.isArray(nextPayload.orchestration.steps)) {
+    nextPayload.orchestration = {
+      ...nextPayload.orchestration,
+      steps: nextPayload.orchestration.steps.map((step) =>
+        step?.agent === "agent_2_fte_rag_cnae"
+          ? {
+              ...step,
+              status: "completed",
+              message: previousDateLabel
+                ? `RAG reaproveitado da execução de ${previousDateLabel}.`
+                : "RAG reaproveitado de execução anterior bem-sucedida.",
+              summary: {
+                ...(step?.summary && typeof step.summary === "object" ? step.summary : {}),
+                reused_previous_success: true,
+                reused_from_analysis_id: reusedAnalysisId,
+              },
+            }
+          : step
+      ),
+    };
+  }
+
+  if (normalizedCnpj?.length === 14 && current?.cnpj !== normalizedCnpj) {
+    return currentPayload;
+  }
+
+  return nextPayload;
 }
 
 function buildPersistenceInfo({ durable }) {
@@ -1508,7 +1610,20 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      const payload = await analyzeEnvironmentalCompliance(String(cnpj ?? ""));
+      let payload = await analyzeEnvironmentalCompliance(String(cnpj ?? ""));
+      if (normalizedCnpj.length === 14 && !payload?.fte_deep_analysis?.available) {
+        try {
+          const previousSuccessfulRag = await getLatestSuccessfulFteRagRunByCnpj({
+            cnpj: normalizedCnpj,
+            maxAgeDays: ENV_COMPLIANCE_RAG_STABILITY_REUSE_DAYS,
+          });
+          if (previousSuccessfulRag) {
+            payload = applyStableRagFromPreviousRun(payload, previousSuccessfulRag, normalizedCnpj);
+          }
+        } catch (stabilityError) {
+          console.error("[api/environmental-compliance] failed to apply rag stability reuse:", stabilityError);
+        }
+      }
       const analysisId = crypto.randomUUID();
       const normalizedActionPlanItems = normalizeActionPlanItemsPayload(payload?.action_plan?.items ?? []);
       const normalizedPayload = {
