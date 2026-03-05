@@ -140,22 +140,25 @@ async function launchChromium() {
   try {
     return await chromium.launch(launchOptions);
   } catch (error) {
-    const reason = summarizeError(error);
-    if (reason !== "chromium_not_installed") throw error;
-
+    let lastError = error;
     if (systemChromiumPath) {
       try {
         return await chromium.launch({
           ...launchOptions,
           executablePath: systemChromiumPath,
         });
-      } catch {
-        // continue to playwright install fallback
+      } catch (systemError) {
+        lastError = systemError;
       }
     }
 
-    await ensureChromiumInstalled();
-    return chromium.launch(launchOptions);
+    const reason = summarizeError(lastError);
+    if (reason === "chromium_not_installed") {
+      await ensureChromiumInstalled();
+      return chromium.launch(launchOptions);
+    }
+
+    throw lastError;
   }
 }
 
