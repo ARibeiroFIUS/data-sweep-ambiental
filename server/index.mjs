@@ -1808,12 +1808,23 @@ const server = http.createServer(async (req, res) => {
       let resolvedMapUrl = mapUrl;
       let resolvedRazaoSocial = razaoSocial;
       let resolvedCnpj = cnpj;
+      let fallbackLatitude = null;
+      let fallbackLongitude = null;
 
       if (!resolvedMapUrl && cnpj) {
         const analysis = await analyzeEnvironmentalCompliance(cnpj);
         resolvedMapUrl = String(analysis?.areas_contaminadas?.official_map_open_url ?? "");
         resolvedRazaoSocial = resolvedRazaoSocial || String(analysis?.company?.razao_social ?? "");
         resolvedCnpj = resolvedCnpj || String(analysis?.cnpj ?? "");
+        const firstMatchWithCoords = Array.isArray(analysis?.areas_contaminadas?.matches)
+          ? analysis.areas_contaminadas.matches.find(
+              (match) => Number.isFinite(Number(match?.latitude)) && Number.isFinite(Number(match?.longitude))
+            )
+          : null;
+        if (firstMatchWithCoords) {
+          fallbackLatitude = Number(firstMatchWithCoords.latitude);
+          fallbackLongitude = Number(firstMatchWithCoords.longitude);
+        }
       }
 
       const capture = await captureAreasContaminadasScreenshot({
@@ -1821,6 +1832,8 @@ const server = http.createServer(async (req, res) => {
         razaoSocial: resolvedRazaoSocial,
         cnpj: resolvedCnpj,
         includeBase64,
+        fallbackLatitude,
+        fallbackLongitude,
       });
 
       sendJson(res, 200, {

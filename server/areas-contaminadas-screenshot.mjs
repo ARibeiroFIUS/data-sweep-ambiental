@@ -2,12 +2,14 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 
 const execFileAsync = promisify(execFile);
 
 const SEMIL_APP_ID = "77da778c122c4ccda8a8d6babce61b6b";
 const DEFAULT_SEMIL_URL = `https://mapas.semil.sp.gov.br/portal/apps/webappviewer/index.html?id=${SEMIL_APP_ID}`;
+const SEMIL_MAPSERVER_EXPORT_URL =
+  "https://mapas.semil.sp.gov.br/server/rest/services/SIGAM/Empreendimento_Contaminacao_SGP/MapServer/export";
 const DEFAULT_CAPTURE_DIR = path.resolve(process.cwd(), process.env.AREAS_CAPTURE_DIR ?? "data/areas-captures");
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
@@ -349,12 +351,58 @@ async function waitForSemilViewerReady(page) {
   await page.waitForTimeout(4200);
 }
 
+async function fetchBufferWithTimeout(url, timeoutMs = 20000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(5000, timeoutMs));
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`static_export_http_${response.status}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function captureStaticSemilExport({ latitude, longitude, filePath }) {
+  const lat = Number(latitude);
+  const lon = Number(longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    throw new Error("invalid_fallback_coordinates");
+  }
+
+  const delta = Math.max(0.01, Number.parseFloat(process.env.AREAS_CAPTURE_EXPORT_DELTA_DEGREES ?? "0.02") || 0.02);
+  const width = Math.max(800, Number.parseInt(process.env.AREAS_CAPTURE_VIEWPORT_WIDTH ?? "1280", 10) || 1280);
+  const height = Math.max(600, Number.parseInt(process.env.AREAS_CAPTURE_VIEWPORT_HEIGHT ?? "900", 10) || 900);
+  const bbox = `${lon - delta},${lat - delta},${lon + delta},${lat + delta}`;
+
+  const url = new URL(SEMIL_MAPSERVER_EXPORT_URL);
+  url.searchParams.set("f", "image");
+  url.searchParams.set("format", "png32");
+  url.searchParams.set("transparent", "false");
+  url.searchParams.set("size", `${width},${height}`);
+  url.searchParams.set("bbox", bbox);
+  url.searchParams.set("bboxSR", "4326");
+  url.searchParams.set("imageSR", "4326");
+  url.searchParams.set("layers", "show:1,2");
+
+  const imageBuffer = await fetchBufferWithTimeout(url.toString(), Number.parseInt(process.env.AREAS_CAPTURE_EXPORT_TIMEOUT_MS ?? "20000", 10));
+  if (!imageBuffer || imageBuffer.length < 1024) {
+    throw new Error("static_export_empty_payload");
+  }
+  await writeFile(filePath, imageBuffer);
+}
+
 /**
  * @param {{
  *  mapUrl?: string;
  *  razaoSocial?: string;
  *  cnpj?: string;
  *  includeBase64?: boolean;
+ *  fallbackLatitude?: number;
+ *  fallbackLongitude?: number;
  * }} input
  */
 export async function captureAreasContaminadasScreenshot(input = {}) {
@@ -412,6 +460,7 @@ export async function captureAreasContaminadasScreenshot(input = {}) {
     let fileName = `${baseFileName}.png`;
     let filePath = path.join(DEFAULT_CAPTURE_DIR, fileName);
     let mimeType = "image/png";
+    let captureMode = "playwright";
     try {
       await page.screenshot({
         path: filePath,
@@ -429,14 +478,31 @@ export async function captureAreasContaminadasScreenshot(input = {}) {
       fileName = `${baseFileName}.jpg`;
       filePath = path.join(DEFAULT_CAPTURE_DIR, fileName);
       mimeType = "image/jpeg";
-      await page.screenshot({
-        path: filePath,
-        fullPage: false,
-        type: "jpeg",
-        quality: 70,
-        animations: "disabled",
-        caret: "hide",
-      });
+      try {
+        await page.screenshot({
+          path: filePath,
+          fullPage: false,
+          type: "jpeg",
+          quality: 70,
+          animations: "disabled",
+          caret: "hide",
+        });
+      } catch (retryError) {
+        const fallbackLat = Number(input?.fallbackLatitude);
+        const fallbackLon = Number(input?.fallbackLongitude);
+        if (!Number.isFinite(fallbackLat) || !Number.isFinite(fallbackLon)) {
+          throw retryError;
+        }
+        fileName = `${baseFileName}-static.png`;
+        filePath = path.join(DEFAULT_CAPTURE_DIR, fileName);
+        mimeType = "image/png";
+        await captureStaticSemilExport({
+          latitude: fallbackLat,
+          longitude: fallbackLon,
+          filePath,
+        });
+        captureMode = "static_export_fallback";
+      }
     }
 
     const fileStats = await stat(filePath);
@@ -447,7 +513,11 @@ export async function captureAreasContaminadasScreenshot(input = {}) {
       status: "success",
       status_reason: searchAttempt.ok ? "captured_after_search" : "captured_with_overlay",
       message: searchAttempt.ok
-        ? `Screenshot capturado apos busca no viewer pelo termo: ${searchAttempt.query}.`
+        ? captureMode === "static_export_fallback"
+          ? "Screenshot gerado por export oficial do MapServer (fallback), com coordenadas do match estruturado."
+          : `Screenshot capturado apos busca no viewer pelo termo: ${searchAttempt.query}.`
+        : captureMode === "static_export_fallback"
+        ? "Screenshot gerado por export oficial do MapServer (fallback), sem preenchimento do widget no viewer."
         : "Screenshot capturado com selo de consulta; o widget de busca nao foi preenchido automaticamente nesta execucao.",
       map_url: mapUrl,
       file_name: fileName,
