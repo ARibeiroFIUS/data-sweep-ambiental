@@ -77,6 +77,10 @@ const ENV_COMPLIANCE_RAG_STABILITY_REUSE_DAYS = Math.max(
   30,
   Number.parseInt(process.env.ENV_COMPLIANCE_RAG_STABILITY_REUSE_DAYS ?? "120", 10) || 120
 );
+const ENV_COMPLIANCE_REUSE_MAX_NAO_CLASSIFICADO_RATIO = Math.max(
+  0,
+  Math.min(1, Number.parseFloat(process.env.ENV_COMPLIANCE_REUSE_MAX_NAO_CLASSIFICADO_RATIO ?? "0.7") || 0.7)
+);
 const environmentalRunCache = new Map();
 
 const MIME_TYPES = {
@@ -262,6 +266,18 @@ function getLatestCachedEnvironmentalRunByCnpj({ cnpj = "", maxAgeDays = ENV_COM
   return latest;
 }
 
+function getRagNaoClassificadoRatio(payload) {
+  const findings = Array.isArray(payload?.fte_deep_analysis?.findings) ? payload.fte_deep_analysis.findings : [];
+  if (findings.length === 0) return 0;
+  const naoClassificados = findings.filter((item) => String(item?.risco ?? "").toLowerCase() === "nao_classificado").length;
+  return naoClassificados / findings.length;
+}
+
+function isPayloadEligibleForReuse(payload) {
+  if (!payload || typeof payload !== "object") return false;
+  return getRagNaoClassificadoRatio(payload) <= ENV_COMPLIANCE_REUSE_MAX_NAO_CLASSIFICADO_RATIO;
+}
+
 function applyStableRagFromPreviousRun(currentPayload, previousRun, normalizedCnpj) {
   const current = currentPayload && typeof currentPayload === "object" ? currentPayload : null;
   const previousPayload = previousRun?.payload_json && typeof previousRun.payload_json === "object" ? previousRun.payload_json : null;
@@ -272,6 +288,7 @@ function applyStableRagFromPreviousRun(currentPayload, previousRun, normalizedCn
   const currentAvailable = Boolean(currentRag?.available);
   const previousAvailable = Boolean(previousRag?.available);
   if (currentAvailable || !previousAvailable) return currentPayload;
+  if (!isPayloadEligibleForReuse(previousPayload)) return currentPayload;
 
   const reusedAt =
     previousPayload?.analyzed_at ||
@@ -1544,40 +1561,42 @@ const server = http.createServer(async (req, res) => {
         });
         if (dbRecentRun?.payload_json && typeof dbRecentRun.payload_json === "object") {
           const storedPayload = dbRecentRun.payload_json;
-          const storedAnalysisId = String(dbRecentRun.analysis_id ?? "").trim();
-          const actionPlanItems = await listActionPlanItems(storedAnalysisId);
-          const normalizedActionPlanItems =
-            actionPlanItems.length > 0 ? actionPlanItems : normalizeActionPlanItemsPayload(storedPayload?.action_plan?.items ?? []);
-          const previousAnalyzedAt = storedPayload?.analyzed_at ?? dbRecentRun.created_at ?? null;
-          const reusedPayload = {
-            ...storedPayload,
-            analysis_id: storedAnalysisId || storedPayload?.analysis_id || null,
-            action_plan: {
-              items: normalizedActionPlanItems,
-            },
-            persistence: buildPersistenceInfo({ durable: true }),
-            cache: buildComplianceCacheMetadata({
-              reused: true,
-              source: "database",
-              analysisId: storedAnalysisId || storedPayload?.analysis_id || null,
-              previousAnalyzedAt,
-              reuseWindowDays: ENV_COMPLIANCE_REUSE_WINDOW_DAYS,
-            }),
-          };
-          try {
-            await saveEnvironmentalAnalysisRun({
-              analysisId: storedAnalysisId,
-              cnpj: normalizedCnpj,
-              schemaVersion: reusedPayload?.schema_version ?? "br-v1",
-              riskLevel: reusedPayload?.summary?.risk_level ?? null,
-              payload: reusedPayload,
-            });
-          } catch (storeError) {
-            console.error("[api/environmental-compliance] failed to update reused payload metadata:", storeError);
+          if (isPayloadEligibleForReuse(storedPayload)) {
+            const storedAnalysisId = String(dbRecentRun.analysis_id ?? "").trim();
+            const actionPlanItems = await listActionPlanItems(storedAnalysisId);
+            const normalizedActionPlanItems =
+              actionPlanItems.length > 0 ? actionPlanItems : normalizeActionPlanItemsPayload(storedPayload?.action_plan?.items ?? []);
+            const previousAnalyzedAt = storedPayload?.analyzed_at ?? dbRecentRun.created_at ?? null;
+            const reusedPayload = {
+              ...storedPayload,
+              analysis_id: storedAnalysisId || storedPayload?.analysis_id || null,
+              action_plan: {
+                items: normalizedActionPlanItems,
+              },
+              persistence: buildPersistenceInfo({ durable: true }),
+              cache: buildComplianceCacheMetadata({
+                reused: true,
+                source: "database",
+                analysisId: storedAnalysisId || storedPayload?.analysis_id || null,
+                previousAnalyzedAt,
+                reuseWindowDays: ENV_COMPLIANCE_REUSE_WINDOW_DAYS,
+              }),
+            };
+            try {
+              await saveEnvironmentalAnalysisRun({
+                analysisId: storedAnalysisId,
+                cnpj: normalizedCnpj,
+                schemaVersion: reusedPayload?.schema_version ?? "br-v1",
+                riskLevel: reusedPayload?.summary?.risk_level ?? null,
+                payload: reusedPayload,
+              });
+            } catch (storeError) {
+              console.error("[api/environmental-compliance] failed to update reused payload metadata:", storeError);
+            }
+            cacheEnvironmentalRun(reusedPayload);
+            sendJson(res, 200, reusedPayload);
+            return;
           }
-          cacheEnvironmentalRun(reusedPayload);
-          sendJson(res, 200, reusedPayload);
-          return;
         }
 
         const memoryRecentRun = getLatestCachedEnvironmentalRunByCnpj({
@@ -1586,32 +1605,34 @@ const server = http.createServer(async (req, res) => {
         });
         if (memoryRecentRun?.payload_json && typeof memoryRecentRun.payload_json === "object") {
           const storedPayload = memoryRecentRun.payload_json;
-          const storedAnalysisId = String(memoryRecentRun.analysis_id ?? "").trim();
-          const normalizedActionPlanItems = normalizeActionPlanItemsPayload(storedPayload?.action_plan?.items ?? []);
-          const previousAnalyzedAt = storedPayload?.analyzed_at ?? memoryRecentRun.created_at ?? null;
-          const reusedPayload = {
-            ...storedPayload,
-            analysis_id: storedAnalysisId || storedPayload?.analysis_id || null,
-            action_plan: {
-              items: normalizedActionPlanItems,
-            },
-            persistence: buildPersistenceInfo({ durable: false }),
-            cache: buildComplianceCacheMetadata({
-              reused: true,
-              source: "memory_cache",
-              analysisId: storedAnalysisId || storedPayload?.analysis_id || null,
-              previousAnalyzedAt,
-              reuseWindowDays: ENV_COMPLIANCE_REUSE_WINDOW_DAYS,
-            }),
-          };
-          cacheEnvironmentalRun(reusedPayload);
-          sendJson(res, 200, reusedPayload);
-          return;
+          if (isPayloadEligibleForReuse(storedPayload)) {
+            const storedAnalysisId = String(memoryRecentRun.analysis_id ?? "").trim();
+            const normalizedActionPlanItems = normalizeActionPlanItemsPayload(storedPayload?.action_plan?.items ?? []);
+            const previousAnalyzedAt = storedPayload?.analyzed_at ?? memoryRecentRun.created_at ?? null;
+            const reusedPayload = {
+              ...storedPayload,
+              analysis_id: storedAnalysisId || storedPayload?.analysis_id || null,
+              action_plan: {
+                items: normalizedActionPlanItems,
+              },
+              persistence: buildPersistenceInfo({ durable: false }),
+              cache: buildComplianceCacheMetadata({
+                reused: true,
+                source: "memory_cache",
+                analysisId: storedAnalysisId || storedPayload?.analysis_id || null,
+                previousAnalyzedAt,
+                reuseWindowDays: ENV_COMPLIANCE_REUSE_WINDOW_DAYS,
+              }),
+            };
+            cacheEnvironmentalRun(reusedPayload);
+            sendJson(res, 200, reusedPayload);
+            return;
+          }
         }
       }
 
       let payload = await analyzeEnvironmentalCompliance(String(cnpj ?? ""));
-      if (normalizedCnpj.length === 14 && !payload?.fte_deep_analysis?.available) {
+      if (normalizedCnpj.length === 14 && !forceRefresh && !payload?.fte_deep_analysis?.available) {
         try {
           const previousSuccessfulRag = await getLatestSuccessfulFteRagRunByCnpj({
             cnpj: normalizedCnpj,
