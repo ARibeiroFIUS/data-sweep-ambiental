@@ -1362,6 +1362,20 @@ function normalizeFteReference(entry) {
   };
 }
 
+function buildDeterministicFteReference(category, matchType) {
+  if (!category || typeof category !== "object") return null;
+  return normalizeFteReference({
+    codigo: String(category.id ?? ""),
+    titulo: `Cat. ${category.id} - ${category.name}`,
+    categoria: category.name,
+    justificativa:
+      matchType === "prefix"
+        ? "Aderência preliminar por prefixo CNAE."
+        : "Aderência preliminar por similaridade textual da descrição.",
+    url: "https://www.gov.br/ibama/pt-br/servicos/cadastros/ctf/ctf-app/ftes/ftes-por-categorias",
+  });
+}
+
 function normalizeFteDeepFinding(entry, fallbackCnae = null) {
   const cnaeCodigo = trimText(entry?.cnae_codigo ?? entry?.cnae ?? entry?.codigo ?? fallbackCnae?.codigo ?? "", 20);
   const cnaeDescricao = trimText(entry?.cnae_descricao ?? entry?.descricao ?? fallbackCnae?.descricao ?? "", 260);
@@ -1403,6 +1417,44 @@ function normalizeFteDeepFinding(entry, fallbackCnae = null) {
   };
 }
 
+function buildConservativeMissingFteFinding(cnae) {
+  const match = matchFteCategoryForCnae(cnae);
+  const category = match?.category;
+  const deterministicRef = buildDeterministicFteReference(category, match?.matchType);
+
+  return normalizeFteDeepFinding(
+    {
+      cnae_codigo: cnae?.codigo ?? "",
+      cnae_descricao: cnae?.descricao ?? "",
+      principal: Boolean(cnae?.principal),
+      risco: category ? "medio" : "nao_classificado",
+      probabilidade_enquadramento: category ? "media" : "indefinida",
+      tese_enquadramento: category
+        ? `Sem retorno estruturado da IA; aplicado critério conservador com aderência preliminar à Cat. ${category.id} (${category.name}).`
+        : "Sem detalhamento estruturado retornado pela IA para este CNAE.",
+      obrigacoes: category
+        ? [
+            "Validar enquadramento na FTE específica do IBAMA com suporte técnico-jurídico.",
+          ]
+        : [],
+      recomendacoes_acao: category
+        ? [
+            "Revisar o CNAE com foco na atividade efetivamente exercida e confirmar FTE aplicável.",
+          ]
+        : ["Executar análise técnica complementar para concluir o enquadramento."],
+      lacunas: category
+        ? [
+            "Classificação conservadora aplicada por ausência de citação textual específica nesta execução.",
+          ]
+        : [
+            "Sem evidência estruturada suficiente para enquadramento preliminar neste CNAE.",
+          ],
+      ftes_relacionadas: deterministicRef ? [deterministicRef] : [],
+    },
+    cnae
+  );
+}
+
 function normalizeFteDeepAnalysisPayload(raw, cnaes, fallbackText = "") {
   const sourceObject = raw && typeof raw === "object" ? raw : {};
   const rawFindings = Array.isArray(sourceObject?.findings)
@@ -1436,12 +1488,7 @@ function normalizeFteDeepAnalysisPayload(raw, cnaes, fallbackText = "") {
             cnae_descricao: existing.cnae_descricao || cnae.descricao,
             principal: existing.principal ?? Boolean(cnae.principal),
           }
-        : normalizeFteDeepFinding(
-            {
-              tese_enquadramento: "Sem detalhamento estruturado retornado pela IA para este CNAE.",
-            },
-            cnae
-          )
+        : buildConservativeMissingFteFinding(cnae)
     );
   }
 
@@ -1501,17 +1548,39 @@ function applyLegalStabilityGuards({ analysis, cnaes, citations }) {
         lacunas: limitStringArray(item?.lacunas, 3),
       };
 
-      // Guardrail jurídico: sem base de referência, não sustentar risco alto.
+      // Guardrail jurídico conservador: sem citação, manter nível médio quando houver aderência técnica.
       if (!hasReference && !hasGlobalCitations) {
-        next.risco = "nao_classificado";
-        next.probabilidade_enquadramento = "indefinida";
-        next.lacunas = limitStringArray(
-          [
-            ...next.lacunas,
-            "Sem citação verificável nesta execução; necessário parecer técnico-jurídico com FTE oficial.",
-          ],
-          3
-        );
+        if (deterministicMatch) {
+          next.risco = next.risco === "alto" ? "medio" : next.risco === "nao_classificado" || next.risco === "baixo" ? "medio" : next.risco;
+          next.probabilidade_enquadramento =
+            next.probabilidade_enquadramento === "alta" || next.probabilidade_enquadramento === "baixa" || next.probabilidade_enquadramento === "indefinida"
+              ? "media"
+              : next.probabilidade_enquadramento;
+          if (!next.tese_enquadramento) {
+            next.tese_enquadramento = `Aderência preliminar à Cat. ${deterministicMatch.category.id} (${deterministicMatch.category.name}); confirmação documental pendente.`;
+          }
+          if (next.ftes_relacionadas.length === 0) {
+            const deterministicRef = buildDeterministicFteReference(deterministicMatch.category, deterministicMatch.matchType);
+            if (deterministicRef) next.ftes_relacionadas = [deterministicRef];
+          }
+          next.lacunas = limitStringArray(
+            [
+              ...next.lacunas,
+              "Sem citação verificável nesta execução; risco médio conservador mantido até validação técnico-jurídica.",
+            ],
+            3
+          );
+        } else {
+          next.risco = "nao_classificado";
+          next.probabilidade_enquadramento = "indefinida";
+          next.lacunas = limitStringArray(
+            [
+              ...next.lacunas,
+              "Sem citação verificável nesta execução; necessário parecer técnico-jurídico com FTE oficial.",
+            ],
+            3
+          );
+        }
       }
 
       // Guardrail de consistência: sem aderência determinística, reduzir confiança de classificações agressivas.
@@ -1599,8 +1668,8 @@ function buildFteDeterministicFallbackAnalysis(cnaes, reason) {
         cnae_codigo: cnae?.codigo ?? "",
         cnae_descricao: cnae?.descricao ?? "",
         principal: Boolean(cnae?.principal),
-        risco: isPrefixMatch ? "medio" : isKeywordMatch ? "baixo" : "nao_classificado",
-        probabilidade_enquadramento: isPrefixMatch ? "media" : isKeywordMatch ? "baixa" : "indefinida",
+        risco: isPrefixMatch || isKeywordMatch ? "medio" : "nao_classificado",
+        probabilidade_enquadramento: isPrefixMatch || isKeywordMatch ? "media" : "indefinida",
         tese_enquadramento: category
           ? `Pré-análise determinística indica aderência com Cat. ${category.id} (${category.name}) do CTF/APP; confirmar FTE específica com RAG/consulta oficial.`
           : "Sem aderência determinística clara para CNAE x FTE nesta execução.",
@@ -1914,7 +1983,8 @@ async function generateFteDeepCnaeAnalysis({ company }) {
     "}",
     "Seja extremamente conciso: no máximo 1 item por lista (obrigacoes, riscos_juridicos, recomendacoes_acao, lacunas) e no máximo 140 caracteres por campo textual longo.",
     "Use no máximo 1 FTE relacionada por CNAE.",
-    "Se não houver evidência suficiente para um CNAE, preencha lacunas explicitamente e use risco 'nao_classificado'.",
+    "Se não houver citação textual direta, mas houver aderência técnica por prefixo/descrição do CNAE com categoria FTE, classifique no mínimo como risco 'medio' e declare lacunas.",
+    "Use risco 'nao_classificado' apenas quando não houver aderência técnica mínima identificável.",
   ].join("\n");
 
   const userPrompt = `Empresa alvo para análise CNAE x FTE:\n\n${JSON.stringify(
