@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Super Relatório AI</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #111827;
+        --line: #253046;
+        --txt: #e5e7eb;
+        --muted: #9ca3af;
+        --ok: #22c55e;
+        --warn: #f59e0b;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+        background: radial-gradient(1200px 500px at 20% -20%, #1d4ed8 0%, transparent 40%), var(--bg);
+        color: var(--txt);
+      }
+      .wrap { max-width: 980px; margin: 0 auto; padding: 28px 18px 60px; }
+      .card {
+        background: color-mix(in srgb, var(--panel) 92%, transparent);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 16px;
+        margin-top: 14px;
+      }
+      h1 { margin: 0 0 8px; font-size: 1.8rem; }
+      p { color: var(--muted); margin: 0; }
+      .row { display: flex; gap: 10px; margin-top: 14px; }
+      input {
+        flex: 1;
+        background: #0b1220;
+        color: var(--txt);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px 14px;
+        font-size: 1rem;
+      }
+      button {
+        border: 0;
+        border-radius: 10px;
+        padding: 0 18px;
+        background: linear-gradient(90deg, #16a34a, #22c55e);
+        color: #052e16;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.5; cursor: default; }
+      .status { margin-top: 10px; font-size: 0.92rem; color: var(--muted); }
+      .status.ok { color: var(--ok); }
+      .status.warn { color: var(--warn); }
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 0.9rem;
+        line-height: 1.45;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Super Relatório AI</h1>
+      <p>Geração de relatório executivo com OpenAI usando contexto de compliance do DataSweep.</p>
+
+      <section class="card">
+        <div class="row">
+          <input id="cnpj" placeholder="CNPJ (ex.: 03.171.752/0001-03)" />
+          <button id="run">Gerar Relatório</button>
+        </div>
+        <div id="status" class="status">Pronto.</div>
+      </section>
+
+      <section class="card">
+        <pre id="output">O relatório aparecerá aqui em Markdown.</pre>
+      </section>
+    </main>
+
+    <script>
+      const cnpjInput = document.getElementById("cnpj");
+      const runBtn = document.getElementById("run");
+      const statusEl = document.getElementById("status");
+      const outputEl = document.getElementById("output");
+
+      function setStatus(text, kind = "") {
+        statusEl.textContent = text;
+        statusEl.className = `status ${kind}`.trim();
+      }
+
+      function cleanCnpj(v) {
+        return String(v || "").replace(/\D/g, "");
+      }
+
+      runBtn.addEventListener("click", async () => {
+        const cnpj = cleanCnpj(cnpjInput.value);
+        if (cnpj.length !== 14) {
+          setStatus("CNPJ inválido. Informe 14 dígitos.", "warn");
+          return;
+        }
+
+        runBtn.disabled = true;
+        outputEl.textContent = "Gerando super relatório...";
+        setStatus("Consultando DataSweep e OpenAI...", "");
+
+        try {
+          const response = await fetch("/api/super-report", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ cnpj }),
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload?.error || "Erro ao gerar relatório.");
+
+          outputEl.textContent = payload.report_markdown || "Sem conteúdo.";
+          setStatus(`Relatório gerado com sucesso (${payload?.llm?.model || "OpenAI"}).`, "ok");
+        } catch (err) {
+          outputEl.textContent = "";
+          setStatus(err.message || String(err), "warn");
+        } finally {
+          runBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -36,6 +36,14 @@ npm i
 npm run dev
 ```
 
+`npm run dev` inicia frontend (Vite) e backend API em paralelo.
+Se preferir executar separadamente:
+
+```sh
+npm run dev:api   # API em http://localhost:3000
+npm run dev:ui    # Frontend em http://localhost:8080
+```
+
 **Edit a file directly in GitHub**
 
 - Navigate to the desired file(s).
@@ -77,6 +85,15 @@ Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/c
 Operational backend instructions (Postgres, PGFN sync job, cron e variáveis) estão em:
 
 - `RAILWAY_RUNBOOK.md`
+
+## Compliance Ambiental (multiagentes)
+
+- Endpoint: `POST /api/environmental-compliance`
+- Fluxo atual: CNPJ/CNAE -> IBAMA -> CETESB -> Municipal -> Areas Contaminadas -> Relatorio IA (ultimo agente)
+- Variaveis recomendadas:
+  - `PORTAL_TRANSPARENCIA_API_KEY` (gov.br)
+  - `OPENAI_API_KEY` (habilita o agente final de relatorio IA)
+  - `OPENAI_MODEL` (opcional, default `gpt-4o-mini`)
 
 ## Investigação profunda (PJ -> PF -> PJ)
 

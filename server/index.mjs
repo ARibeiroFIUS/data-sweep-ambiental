@@ -5,6 +5,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeCnpj, HttpError } from "./analyze-cnpj.mjs";
 import { analyzePartner, PartnerHttpError } from "./analyze-partner.mjs";
+import {
+  analyzeEnvironmentalCompliance,
+  EnvironmentalHttpError,
+} from "./environmental-compliance.mjs";
 import { generateIntelligenceReport } from "./ai-synthesis.mjs";
 import { runPgfnSyncJob } from "./pgfn-sync.mjs";
 import { recoverStaleJobRuns, getPgfnSourceStatus } from "./source-index-store.mjs";
@@ -918,6 +922,37 @@ const server = http.createServer(async (req, res) => {
   if (pathname === "/health") {
     sendJson(res, 200, { status: "ok" });
     return;
+  }
+
+  if (pathname === "/api/environmental-compliance") {
+    setApiCorsHeaders(res);
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Método não permitido" });
+      return;
+    }
+
+    try {
+      const body = await readJsonBody(req);
+      const cnpj = typeof body === "object" && body !== null && "cnpj" in body ? body.cnpj : "";
+      const payload = await analyzeEnvironmentalCompliance(String(cnpj ?? ""));
+      sendJson(res, 200, payload);
+      return;
+    } catch (error) {
+      if (error instanceof EnvironmentalHttpError) {
+        sendJson(res, error.statusCode, { error: error.message });
+        return;
+      }
+      console.error("[api/environmental-compliance] unexpected error", error);
+      sendJson(res, 500, { error: "Erro interno ao processar compliance ambiental" });
+      return;
+    }
   }
 
   if (pathname === "/api/analyze-cnpj") {

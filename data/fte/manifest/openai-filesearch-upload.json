@@ -1,0 +1,1194 @@
+{
+  "generated_at": "2026-03-05T12:27:18.594Z",
+  "rag_dir": "/Users/andreribeiro/data-sweep-ambiental/data-sweep-ambiental/data/fte/rag",
+  "vector_store_id": "vs_69a9756d3e4c819182b2bb59a8d09191",
+  "vector_store_name": "FTE Ambiental - Data Sweep",
+  "dry_run": false,
+  "total_files_discovered": 197,
+  "total_files_processed": 197,
+  "total_success": 197,
+  "results": [
+    {
+      "file": "data/fte/rag/copy_of_ftes-categoria-20-uso-de-recursos-naturais-20-21-importacao-ou-exportacao-de-fauna-945206c276.md",
+      "file_id": "file-MWFKKVjgqLXMDPTvXpf8XW",
+      "vector_store_file_id": "file-MWFKKVjgqLXMDPTvXpf8XW",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-1-extracao-e-tratamento-de-minerais-063b5f1d96.md",
+      "file_id": "file-Ec72thSan4QZ2DxEy1zsbM",
+      "vector_store_file_id": "file-Ec72thSan4QZ2DxEy1zsbM",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-1-extracao-e-tratamento-de-minerais-1-2-lavra-a-ceu-aberto-inclusive-de-alu-83a9c2a879.md",
+      "file_id": "file-AGVNrmCVvuNJb7BgN9vUA5",
+      "vector_store_file_id": "file-AGVNrmCVvuNJb7BgN9vUA5",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-1-extracao-e-tratamento-de-minerais-1-3-lavra-subterranea-com-ou-sem-benefi-1f6b5cebcb.md",
+      "file_id": "file-CGZY2uLsYNNzM2nYhuE57N",
+      "vector_store_file_id": "file-CGZY2uLsYNNzM2nYhuE57N",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-1-extracao-e-tratamento-de-minerais-1-4-lavra-garimpeira-3cb032e4cb.md",
+      "file_id": "file-MNydCe44k2XAd1u4zwhA41",
+      "vector_store_file_id": "file-MNydCe44k2XAd1u4zwhA41",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-1-extracao-e-tratamento-de-minerais-1-5-perfuracao-de-pocos-e-producao-de-p-490ce29717.md",
+      "file_id": "file-KUNsPV9SdWck31CfCseunY",
+      "vector_store_file_id": "file-KUNsPV9SdWck31CfCseunY",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-1-extracao-e-tratamento-de-minerais-1-7-lavra-garimpeira-2013-decreto-no-97-5ce7995d05.md",
+      "file_id": "file-SjAPjDsb6BhAVmrZ5krS6S",
+      "vector_store_file_id": "file-SjAPjDsb6BhAVmrZ5krS6S",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-10-industria-de-couros-e-peles-10-2-curtimento-e-outras-preparacoes-de-cour-694fa9e02b.md",
+      "file_id": "file-WkhGCct8irEwLh7kFrcYNT",
+      "vector_store_file_id": "file-WkhGCct8irEwLh7kFrcYNT",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-10-industria-de-couros-e-peles-10-3-fabricacao-de-artefatos-diversos-de-cou-101621fa53.md",
+      "file_id": "file-DqG9T97csZ3aq8NV2XxfmL",
+      "vector_store_file_id": "file-DqG9T97csZ3aq8NV2XxfmL",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-10-industria-de-couros-e-peles-10-4-fabricacao-de-cola-animal-6012080655.md",
+      "file_id": "file-1NjGgN73ydQgAmTxHNpQAG",
+      "vector_store_file_id": "file-1NjGgN73ydQgAmTxHNpQAG",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-11-industria-textil-de-vestuario-calcados-e-artefatos-de-tecidos-11-1-benef-4c3cc34fe8.md",
+      "file_id": "file-DBkafjGR4HnqPkKoDU5Tnv",
+      "vector_store_file_id": "file-DBkafjGR4HnqPkKoDU5Tnv",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-11-industria-textil-de-vestuario-calcados-e-artefatos-de-tecidos-11-2-fabri-de487bd9bb.md",
+      "file_id": "file-EqBEAAJ4QZXjPmENQBZYun",
+      "vector_store_file_id": "file-EqBEAAJ4QZXjPmENQBZYun",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-11-industria-textil-de-vestuario-calcados-e-artefatos-de-tecidos-11-3-tingi-0389b3de34.md",
+      "file_id": "file-2mWieKYBK5QComijnkbbeB",
+      "vector_store_file_id": "file-2mWieKYBK5QComijnkbbeB",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-11-industria-textil-de-vestuario-calcados-e-artefatos-de-tecidos-11-4-fabri-cc91ba39f0.md",
+      "file_id": "file-AvcnJiToW8iHbJe3VdCwhJ",
+      "vector_store_file_id": "file-AvcnJiToW8iHbJe3VdCwhJ",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-12-industria-de-produtos-de-materia-plastica-12-2-fabricacao-de-artefatos-d-1444250182.md",
+      "file_id": "file-PyqvzQuCiy62EARRSuGmaV",
+      "vector_store_file_id": "file-PyqvzQuCiy62EARRSuGmaV",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-13-industria-do-fumo-13-1-fabricacao-de-cigarros-charutos-cigarrilhas-e-out-ee6d098ec9.md",
+      "file_id": "file-Kro1bXHMSL2SbbCadZcJMM",
+      "vector_store_file_id": "file-Kro1bXHMSL2SbbCadZcJMM",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-14-industrias-diversas-14-1-usinas-de-producao-de-concreto-a5dc6dffd8.md",
+      "file_id": "file-M4cihgkoHvhZGgPrcgsAFi",
+      "vector_store_file_id": "file-M4cihgkoHvhZGgPrcgsAFi",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-14-industrias-diversas-14-2-usinas-de-producao-de-asfalto-ab6186148c.md",
+      "file_id": "file-2t7JqCChKHmTpVLF3oS1j3",
+      "vector_store_file_id": "file-2t7JqCChKHmTpVLF3oS1j3",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-1-producao-de-substancias-e-fabricacao-de-produtos--723781ee00.md",
+      "file_id": "file-Q1d7rgFZXQuDJumjSPXJeN",
+      "vector_store_file_id": "file-Q1d7rgFZXQuDJumjSPXJeN",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-10-fabricacao-de-tintas-esmaltes-lacas-vernizes-imp-4f426b0685.md",
+      "file_id": "file-URkaBCyLg4K4xPbXpFQ4q5",
+      "vector_store_file_id": "file-URkaBCyLg4K4xPbXpFQ4q5",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-11-fabricacao-de-fertilizantes-e-agroquimicos-32a3077d34.md",
+      "file_id": "file-UcX9GKcsLW2CRRmbmWTVCe",
+      "vector_store_file_id": "file-UcX9GKcsLW2CRRmbmWTVCe",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-12-fabricacao-de-produtos-farmaceuticos-e-veterinar-e8c4db69fa.md",
+      "file_id": "file-TeWqWVpEZJK16kMiLZt7hX",
+      "vector_store_file_id": "file-TeWqWVpEZJK16kMiLZt7hX",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-13-fabricacao-de-saboes-detergentes-e-velas-fec4acc470.md",
+      "file_id": "file-4fcapigtj7ubgAoHW9BKpd",
+      "vector_store_file_id": "file-4fcapigtj7ubgAoHW9BKpd",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-14-fabricacao-de-perfumarias-e-cosmeticos-856575d51a.md",
+      "file_id": "file-9Uc2aAKn1CmF3Nods6Znve",
+      "vector_store_file_id": "file-9Uc2aAKn1CmF3Nods6Znve",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-15-producao-de-alcool-etilico-metanol-e-similares-1b8629cb7f.md",
+      "file_id": "file-JrruzudjfkLn2dm5wrB8PB",
+      "vector_store_file_id": "file-JrruzudjfkLn2dm5wrB8PB",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-17-producao-de-substancias-e-fabricacao-de-produtos-fb15129153.md",
+      "file_id": "file-WvHNyQxpn9HP3WX4TxoTko",
+      "vector_store_file_id": "file-WvHNyQxpn9HP3WX4TxoTko",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-2-fabricacao-de-produtos-derivados-do-processamento-b335e3d504.md",
+      "file_id": "file-1yDQWNEUSGAqTwhde1KfQ6",
+      "vector_store_file_id": "file-1yDQWNEUSGAqTwhde1KfQ6",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-20-producao-de-substancias-e-fabricacao-de-produtos-ce11b041f9.md",
+      "file_id": "file-9S6EQEkFH6td8dGbsmFM7c",
+      "vector_store_file_id": "file-9S6EQEkFH6td8dGbsmFM7c",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-21-producao-de-substancias-e-fabricacao-de-produtos-700f43e746.md",
+      "file_id": "file-6AdTeGHyXicQckc3PSLnUU",
+      "vector_store_file_id": "file-6AdTeGHyXicQckc3PSLnUU",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-23-fabricacao-de-produtos-derivados-do-processament-a2d7d17d39.md",
+      "file_id": "file-MdwafZp1gEP8NHTWjjJTbK",
+      "vector_store_file_id": "file-MdwafZp1gEP8NHTWjjJTbK",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-3-fabricacao-de-combustiveis-nao-derivados-de-petro-592ae2d221.md",
+      "file_id": "file-4bPjnPEPPaVCSyfdGMYP6k",
+      "vector_store_file_id": "file-4bPjnPEPPaVCSyfdGMYP6k",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-4-producao-de-oleos-gorduras-ceras-vegetais-e-anima-429dbbb717.md",
+      "file_id": "file-BrukNVdYSGoW59t6ndNgE7",
+      "vector_store_file_id": "file-BrukNVdYSGoW59t6ndNgE7",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-5-fabricacao-de-resinas-e-de-fibras-e-fios-artifici-798e7a3d2a.md",
+      "file_id": "file-Ft37WWmjhVSiWByfeasrQZ",
+      "vector_store_file_id": "file-Ft37WWmjhVSiWByfeasrQZ",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-6-fabricacao-de-polvora-explosivos-detonantes-munic-3949c632f5.md",
+      "file_id": "file-LAfExeNnHLAXSXt5k5PTsh",
+      "vector_store_file_id": "file-LAfExeNnHLAXSXt5k5PTsh",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-7-recuperacao-e-refino-de-solventes-oleos-minerais--c8ed61d166.md",
+      "file_id": "file-Bhy8vkYXLHoG19UeNPFHVy",
+      "vector_store_file_id": "file-Bhy8vkYXLHoG19UeNPFHVy",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-8-fabricacao-de-concentrados-aromaticos-naturais-ar-4d8be8359c.md",
+      "file_id": "file-GPXXXvDZcCNHa5sDAEY2s1",
+      "vector_store_file_id": "file-GPXXXvDZcCNHa5sDAEY2s1",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-15-industria-quimica-15-9-fabricacao-de-preparados-para-limpeza-e-polimento-9d566478d6.md",
+      "file_id": "file-1fjZGa1erx9fTzTBRZt36j",
+      "vector_store_file_id": "file-1fjZGa1erx9fTzTBRZt36j",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-16-industria-de-produtos-alimentares-e-bebida-16-1-beneficiamento-moagem-to-25aa4f6fd6.md",
+      "file_id": "file-5WHsbPCLjbYmBSmKj8iLiD",
+      "vector_store_file_id": "file-5WHsbPCLjbYmBSmKj8iLiD",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-16-industria-de-produtos-alimentares-e-bebida-16-10-fabricacao-de-racoes-ba-8a8ee48c79.md",
+      "file_id": "file-WYmUDJHwoGsQy53dB5JsnF",
+      "vector_store_file_id": "file-WYmUDJHwoGsQy53dB5JsnF",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-16-industria-de-produtos-alimentares-e-bebida-16-11-fabricacao-de-vinhos-e--4de7093fc5.md",
+      "file_id": "file-UKwovBzVFVtDNomHvFHngG",
+      "vector_store_file_id": "file-UKwovBzVFVtDNomHvFHngG",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-16-industria-de-produtos-alimentares-e-bebida-16-12-fabricacao-de-cervejas--ee10f77533.md",
+      "file_id": "file-PQ5Wpjf6KFsWTrWp8yRTh8",
+      "vector_store_file_id": "file-PQ5Wpjf6KFsWTrWp8yRTh8",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-16-industria-de-produtos-alimentares-e-bebida-16-13-fabricacao-de-bebidas-n-55dd559c1f.md",
+      "file_id": "file-XGMGYPL3sw6UV6pCuir7g6",
+      "vector_store_file_id": "file-XGMGYPL3sw6UV6pCuir7g6",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-16-industria-de-produtos-alimentares-e-bebida-16-14-fabricacao-de-bebidas-a-6842e6e692.md",
+      "file_id": "file-Jt9Ky3piq8b7MobXmGWWX2",
+      "vector_store_file_id": "file-Jt9Ky3piq8b7MobXmGWWX2",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-16-industria-de-produtos-alimentares-e-bebida-16-16-matadouros-abatedouros--4ba9c5cb28.md",
+      "file_id": "file-9fZvPYKcM6FdEDNS8b4btv",
+      "vector_store_file_id": "file-9fZvPYKcM6FdEDNS8b4btv",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-16-industria-de-produtos-alimentares-e-bebida-16-2-matadouros-abatedouros-f-8abc8b0e74.md",
+      "file_id": "file-6U4ir1m3UFWu3kfsx2xV8t",
+      "vector_store_file_id": "file-6U4ir1m3UFWu3kfsx2xV8t",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-16-industria-de-produtos-alimentares-e-bebida-16-3-fabricacao-de-conservas-ee42bc99f6.md",
+      "file_id": "file-Qc8CWoUw9wDtewekHP4VzJ",
+      "vector_store_file_id": "file-Qc8CWoUw9wDtewekHP4VzJ",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-16-industria-de-produtos-alimentares-e-bebida-16-4-preparacao-de-pescados-e-afc3688250.md",
+      "file_id": "file-Y8npkw4XoHvQRphiP5SrDz",
+      "vector_store_file_id": "file-Y8npkw4XoHvQRphiP5SrDz",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-16-industria-de-produtos-alimentares-e-bebida-16-5-beneficiamento-e-industr-a4b569ed24.md",
+      "file_id": "file-2ZDmCmaLr5Xqcauqnw7kky",
+      "vector_store_file_id": "file-2ZDmCmaLr5Xqcauqnw7kky",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-16-industria-de-produtos-alimentares-e-bebida-16-6-fabricacao-e-refinacao-d-15ac5e2f7c.md",
+      "file_id": "file-HynTmjJS7tqrhggPVfV1CE",
+      "vector_store_file_id": "file-HynTmjJS7tqrhggPVfV1CE",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-16-industria-de-produtos-alimentares-e-bebida-16-7-refino-e-preparacao-de-o-bef861b5ec.md",
+      "file_id": "file-XRP7hgqC81dZEzyBgdrBSy",
+      "vector_store_file_id": "file-XRP7hgqC81dZEzyBgdrBSy",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-16-industria-de-produtos-alimentares-e-bebida-16-8-producao-de-manteiga-cac-a6d2455fbc.md",
+      "file_id": "file-Yc6ofwZFvThkP9BF2imi16",
+      "vector_store_file_id": "file-Yc6ofwZFvThkP9BF2imi16",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-16-industria-de-produtos-alimentares-e-bebida-16-9-fabricacao-de-fermentos--a1f0852671.md",
+      "file_id": "file-Qx66oZwkqfcCurQFjGEZbL",
+      "vector_store_file_id": "file-Qx66oZwkqfcCurQFjGEZbL",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-17-servicos-de-utilidade-17-1-producao-de-energia-termoeletrica-3db4b0223d.md",
+      "file_id": "file-2uB6jczzxAY3oPtsFunUJH",
+      "vector_store_file_id": "file-2uB6jczzxAY3oPtsFunUJH",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-17-servicos-de-utilidade-17-4-destinacao-de-residuos-de-esgotos-sanitarios--af7a7bb127.md",
+      "file_id": "file-DPYNhB85pKFVCDurnG6T3L",
+      "vector_store_file_id": "file-DPYNhB85pKFVCDurnG6T3L",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-17-servicos-de-utilidade-17-5-dragagem-e-derrocamentos-em-corpos-dagua-dc528c2d47.md",
+      "file_id": "file-YAwyyaxLybXuQyjDRwMVqC",
+      "vector_store_file_id": "file-YAwyyaxLybXuQyjDRwMVqC",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-17-servicos-de-utilidade-17-57-tratamento-e-destinacao-de-residuos-industri-9309158252.md",
+      "file_id": "file-VsK9B3tyFY8Kxj2NrR4DPT",
+      "vector_store_file_id": "file-VsK9B3tyFY8Kxj2NrR4DPT",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-17-servicos-de-utilidade-17-58-tratamento-e-destinacao-de-residuos-industri-038c6afc19.md",
+      "file_id": "file-FR4tZdRzdWRi4BS8Z2qu9M",
+      "vector_store_file_id": "file-FR4tZdRzdWRi4BS8Z2qu9M",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-17-servicos-de-utilidade-17-59-tratamento-e-destinacao-de-residuos-industri-1089c72d39.md",
+      "file_id": "file-1fQm7qhrZ8aTjKUaFHTBtS",
+      "vector_store_file_id": "file-1fQm7qhrZ8aTjKUaFHTBtS",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-17-servicos-de-utilidade-17-60-tratamento-e-destinacao-de-residuos-industri-c183fb7c3a.md",
+      "file_id": "file-PedCetMmGTJ9HZneRrzry7",
+      "vector_store_file_id": "file-PedCetMmGTJ9HZneRrzry7",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-17-servicos-de-utilidade-17-61-disposicao-de-residuos-especiais-residuos-ra-0eb36a667b.md",
+      "file_id": "file-8irVYYNPzq5NmMBVLV8ykJ",
+      "vector_store_file_id": "file-8irVYYNPzq5NmMBVLV8ykJ",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-17-servicos-de-utilidade-17-62-disposicao-de-residuos-especiais-lei-no-12-3-b4b8755f49.md",
+      "file_id": "file-4ZdE9cmvCkPcroyd4UBdZC",
+      "vector_store_file_id": "file-4ZdE9cmvCkPcroyd4UBdZC",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-17-servicos-de-utilidade-17-63-disposicao-de-residuos-especiais-lei-no-12-3-b194b02be5.md",
+      "file_id": "file-AFgjHxcwoUY8A24YiuWHgt",
+      "vector_store_file_id": "file-AFgjHxcwoUY8A24YiuWHgt",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-17-servicos-de-utilidade-17-64-disposicao-de-residuos-especiais-lei-no-12-3-43b38bedae.md",
+      "file_id": "file-MS6YdfVYBDjXmVTYWPo8uK",
+      "vector_store_file_id": "file-MS6YdfVYBDjXmVTYWPo8uK",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-17-servicos-de-utilidade-17-65-disposicao-de-residuos-especiais-residuos-da-4b02cf19f6.md",
+      "file_id": "file-VjRyU4wSVASqcSUPVGLaTj",
+      "vector_store_file_id": "file-VjRyU4wSVASqcSUPVGLaTj",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-17-servicos-de-utilidade-17-66-disposicao-de-residuos-especiais-protocolo-d-58c8f0388d.md",
+      "file_id": "file-VKC9yrsRgrgZE71mR3PjbJ",
+      "vector_store_file_id": "file-VKC9yrsRgrgZE71mR3PjbJ",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-17-servicos-de-utilidade-17-67-recuperacao-de-areas-degradadas-1e626ba6b6.md",
+      "file_id": "file-TyJ34GeqJfPzrQCe31ARiF",
+      "vector_store_file_id": "file-TyJ34GeqJfPzrQCe31ARiF",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-17-servicos-de-utilidade-17-68-recuperacao-de-areas-contaminadas-c5e642d4ac.md",
+      "file_id": "file-FoEVecyuijDyvwJbfy1Kw4",
+      "vector_store_file_id": "file-FoEVecyuijDyvwJbfy1Kw4",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-17-servicos-de-utilidade-17-69-tratamento-e-destinacao-de-residuos-industri-3c6cc78a88.md",
+      "file_id": "file-BDfLsEnFroQoJBhiBM7ra3",
+      "vector_store_file_id": "file-BDfLsEnFroQoJBhiBM7ra3",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-1-transporte-de-cargas-peri-c859b8f359.md",
+      "file_id": "file-KNFeF1eXiqYm4SHPBXpavm",
+      "vector_store_file_id": "file-KNFeF1eXiqYm4SHPBXpavm",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-10-comercio-de-produtos-qui-541be39162.md",
+      "file_id": "file-SdkdztYYQE9E414t8i9aSn",
+      "vector_store_file_id": "file-SdkdztYYQE9E414t8i9aSn",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-13-comercio-de-produtos-qui-4c5323b45a.md",
+      "file_id": "file-CdrWmGbv9i1KDpe8UB5pBP",
+      "vector_store_file_id": "file-CdrWmGbv9i1KDpe8UB5pBP",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-14-transporte-de-cargas-per-3094a9b1f1.md",
+      "file_id": "file-PPUjbCdnA56tTmJ5XNtaYR",
+      "vector_store_file_id": "file-PPUjbCdnA56tTmJ5XNtaYR",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-17-comercio-de-produtos-qui-ef1b6351d1.md",
+      "file_id": "file-1RepQL9HorMe6CF17Y5TJe",
+      "vector_store_file_id": "file-1RepQL9HorMe6CF17Y5TJe",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-2-transporte-por-dutos-e631d83dfb.md",
+      "file_id": "file-JWBtsoVksF9hn6voShdFv9",
+      "vector_store_file_id": "file-JWBtsoVksF9hn6voShdFv9",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-3-marinas-portos-e-aeroport-832adb4758.md",
+      "file_id": "file-35tVXLwk9AVf6XrgdVv4W6",
+      "vector_store_file_id": "file-35tVXLwk9AVf6XrgdVv4W6",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-4-terminais-de-minerio-petr-3a9d05fac1.md",
+      "file_id": "file-Mu7cD77SJK7BEQHq56yFXe",
+      "vector_store_file_id": "file-Mu7cD77SJK7BEQHq56yFXe",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-5-deposito-de-produtos-quim-93d8561164.md",
+      "file_id": "file-Yba9KwDMmoSKTnFcjxnUZ4",
+      "vector_store_file_id": "file-Yba9KwDMmoSKTnFcjxnUZ4",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-6-comercio-de-combustiveis--dd4196d5ba.md",
+      "file_id": "file-PZ4n7e2auKRsBtZNXWiEP9",
+      "vector_store_file_id": "file-PZ4n7e2auKRsBtZNXWiEP9",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-64-comercio-de-produtos-qui-c72119e05d.md",
+      "file_id": "file-EphjVTQ9uSY7KWY7eA8Uyk",
+      "vector_store_file_id": "file-EphjVTQ9uSY7KWY7eA8Uyk",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-66-comercio-de-produtos-qui-5c33b5c147.md",
+      "file_id": "file-QuKcReEKEPGN71yWaWz5Gt",
+      "vector_store_file_id": "file-QuKcReEKEPGN71yWaWz5Gt",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-74-transporte-de-cargas-per-adcfce488e.md",
+      "file_id": "file-R2xPYe5qkB4dxUCvEJgW5j",
+      "vector_store_file_id": "file-R2xPYe5qkB4dxUCvEJgW5j",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-79-comercio-de-produtos-qui-24aa8c2c5c.md",
+      "file_id": "file-JeE6GPMCGZ4WF163LWuyHz",
+      "vector_store_file_id": "file-JeE6GPMCGZ4WF163LWuyHz",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-8-comercio-de-produtos-quim-494c435512.md",
+      "file_id": "file-MMkBmMVBVX2SEoby6vo9Ga",
+      "vector_store_file_id": "file-MMkBmMVBVX2SEoby6vo9Ga",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-80-deposito-de-produtos-qui-f74d9c1fa0.md",
+      "file_id": "file-KDK75Ptr2wj3t5xcykNKTs",
+      "vector_store_file_id": "file-KDK75Ptr2wj3t5xcykNKTs",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-81-comercio-de-produtos-qui-64b86edbd3.md",
+      "file_id": "file-LmT5kbRw6QPZWuofT2wNTQ",
+      "vector_store_file_id": "file-LmT5kbRw6QPZWuofT2wNTQ",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-83-a237a532af.md",
+      "file_id": "file-21CRE5Q7bMV1wja8kGhcye",
+      "vector_store_file_id": "file-21CRE5Q7bMV1wja8kGhcye",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-18-84-deposito-de-produtos-qui-ba1199063b.md",
+      "file_id": "file-SXkYFG5x8x4g9nAabnLYsp",
+      "vector_store_file_id": "file-SXkYFG5x8x4g9nAabnLYsp",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-18-transporte-terminais-depositos-e-comercio-1820137-comercio-de-produtos-q-cac778a327.md",
+      "file_id": "file-UjV9ZhYzAqoCvz7Ss9P46j",
+      "vector_store_file_id": "file-UjV9ZhYzAqoCvz7Ss9P46j",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-19-turismo-19-1-complexos-turisticos-e-de-lazer-inclusive-parques-tematicos-9bd56422b8.md",
+      "file_id": "file-VkPXyebKZiZEqD4kVEHMSD",
+      "vector_store_file_id": "file-VkPXyebKZiZEqD4kVEHMSD",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-20-uso-de-recursos-naturais-20-2-exploracao-economica-da-madeira-ou-lenha-e-2265107eaf.md",
+      "file_id": "file-1zqUxGCno2UcJWqVja15m1",
+      "vector_store_file_id": "file-1zqUxGCno2UcJWqVja15m1",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-20-uso-de-recursos-naturais-20-21-importacao-ou-exportacao-de-fauna-nativa--41f67df25a.md",
+      "file_id": "file-AdiaJZ1fS9v2qMGjH7wtCM",
+      "vector_store_file_id": "file-AdiaJZ1fS9v2qMGjH7wtCM",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-20-uso-de-recursos-naturais-20-23-atividade-de-criacao-e-exploracao-economi-a81033c8d9.md",
+      "file_id": "file-3hWBChvp28eEe8JikxPCNt",
+      "vector_store_file_id": "file-3hWBChvp28eEe8JikxPCNt",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-20-uso-de-recursos-naturais-20-25-atividade-de-criacao-e-exploracao-economi-f72319baa5.md",
+      "file_id": "file-LMBy7WQecdoxkgGGG6us1p",
+      "vector_store_file_id": "file-LMBy7WQecdoxkgGGG6us1p",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-20-uso-de-recursos-naturais-20-26-introducao-de-especies-exoticas-exceto-pa-5d89a6311e.md",
+      "file_id": "file-13Xt8ETx8Cq34A26WN4fKv",
+      "vector_store_file_id": "file-13Xt8ETx8Cq34A26WN4fKv",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-20-uso-de-recursos-naturais-20-35-introducao-de-especies-geneticamente-modi-036e07d896.md",
+      "file_id": "file-6XKt9UsgvrBBJYBiqejSaj",
+      "vector_store_file_id": "file-6XKt9UsgvrBBJYBiqejSaj",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-20-uso-de-recursos-naturais-20-37-uso-da-diversidade-biologica-pela-biotecn-985f7aa1f0.md",
+      "file_id": "file-9eswm3UkE1cSBKwQwPtCAF",
+      "vector_store_file_id": "file-9eswm3UkE1cSBKwQwPtCAF",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-20-uso-de-recursos-naturais-20-5-utilizacao-do-patrimonio-genetico-natural-f6778dd202.md",
+      "file_id": "file-N6HYYEefVhmj1DDzixSPZ8",
+      "vector_store_file_id": "file-N6HYYEefVhmj1DDzixSPZ8",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-20-uso-de-recursos-naturais-20-54-exploracao-de-recursos-aquaticos-vivos-le-4bf4da5e45.md",
+      "file_id": "file-W3ZHAowXPoxS5U297PDsw5",
+      "vector_store_file_id": "file-W3ZHAowXPoxS5U297PDsw5",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-20-uso-de-recursos-naturais-20-6-exploracao-de-recursos-aquaticos-vivos-c7e0f1a55f.md",
+      "file_id": "file-DPk82rJYVgMdvRU98gBt1Q",
+      "vector_store_file_id": "file-DPk82rJYVgMdvRU98gBt1Q",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-20-uso-de-recursos-naturais-20-60-silvicultura-lei-no-12-651-2012-art-35-ss-f0eb12aed4.md",
+      "file_id": "file-NnAMPrfLpjJz6NdYd37TnJ",
+      "vector_store_file_id": "file-NnAMPrfLpjJz6NdYd37TnJ",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-20-uso-de-recursos-naturais-20-61-silvicultura-lei-no-12-651-2012-art-35-ss-b415fba1b0.md",
+      "file_id": "file-Vayx2QyjMJE6aTJnUEhiJu",
+      "vector_store_file_id": "file-Vayx2QyjMJE6aTJnUEhiJu",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-20-uso-de-recursos-naturais-20-63-exploracao-economica-da-madeira-ou-lenha--47b4741470.md",
+      "file_id": "file-PXBToND1NS38RtjQQC9QU2",
+      "vector_store_file_id": "file-PXBToND1NS38RtjQQC9QU2",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-20-uso-de-recursos-naturais-20-81-atividade-de-criacao-e-exploracao-economi-36904ad175.md",
+      "file_id": "file-R2x1QR9Cmupo8ic4hQD3z3",
+      "vector_store_file_id": "file-R2x1QR9Cmupo8ic4hQD3z3",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-007a263c94.md",
+      "file_id": "file-8NqMwF4TgfJ1byfAHpn7iG",
+      "vector_store_file_id": "file-8NqMwF4TgfJ1byfAHpn7iG",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-0b60a5b236.md",
+      "file_id": "file-L88rgGaiSboitmf16XeuHM",
+      "vector_store_file_id": "file-L88rgGaiSboitmf16XeuHM",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-0b74ef56dd.md",
+      "file_id": "file-AqWwxHCLhjQignA5QkMQyD",
+      "vector_store_file_id": "file-AqWwxHCLhjQignA5QkMQyD",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-0d41bb6dc6.md",
+      "file_id": "file-8SYUuzin67uvnLgGirP9AZ",
+      "vector_store_file_id": "file-8SYUuzin67uvnLgGirP9AZ",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-0eda7c0bd2.md",
+      "file_id": "file-CtV628Si1zYFff6VDdK9xi",
+      "vector_store_file_id": "file-CtV628Si1zYFff6VDdK9xi",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-10ab8b2a1b.md",
+      "file_id": "file-HHKXFihf9QCx8y5ppAQaSv",
+      "vector_store_file_id": "file-HHKXFihf9QCx8y5ppAQaSv",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-10b0a89362.md",
+      "file_id": "file-7BWS1RGPTRk9c91NwyyFEL",
+      "vector_store_file_id": "file-7BWS1RGPTRk9c91NwyyFEL",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-1aa1108d88.md",
+      "file_id": "file-DJz5VNmNetnG5xQrHnfsKY",
+      "vector_store_file_id": "file-DJz5VNmNetnG5xQrHnfsKY",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-23be082b67.md",
+      "file_id": "file-6SkBpsUSQQYSzpbwjUBcud",
+      "vector_store_file_id": "file-6SkBpsUSQQYSzpbwjUBcud",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-26b896457b.md",
+      "file_id": "file-BFGsZfoyUkc513M9HWY6BH",
+      "vector_store_file_id": "file-BFGsZfoyUkc513M9HWY6BH",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-2ca50bffb9.md",
+      "file_id": "file-9B9Qg6okWX1rEMetLNwr8N",
+      "vector_store_file_id": "file-9B9Qg6okWX1rEMetLNwr8N",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-3279e95103.md",
+      "file_id": "file-U2iwdJ5KM63gYR8ttiRz1S",
+      "vector_store_file_id": "file-U2iwdJ5KM63gYR8ttiRz1S",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-3df1e5ff37.md",
+      "file_id": "file-1MXNheZeZVK5hdhsMgcXrC",
+      "vector_store_file_id": "file-1MXNheZeZVK5hdhsMgcXrC",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-43ccf9e6df.md",
+      "file_id": "file-Fru2QSSceqoFnwiMgyw7xM",
+      "vector_store_file_id": "file-Fru2QSSceqoFnwiMgyw7xM",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-49322e76ea.md",
+      "file_id": "file-Thf2LMLuTSUT8BrCF3LqFh",
+      "vector_store_file_id": "file-Thf2LMLuTSUT8BrCF3LqFh",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-49558a965f.md",
+      "file_id": "file-DLUiUa5usuWUTyzjzXTy4T",
+      "vector_store_file_id": "file-DLUiUa5usuWUTyzjzXTy4T",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-4b3a3e5758.md",
+      "file_id": "file-27Lge5byR8sHA5Nj1ZMV6y",
+      "vector_store_file_id": "file-27Lge5byR8sHA5Nj1ZMV6y",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-4fb45db1c9.md",
+      "file_id": "file-8A7Utuzb8dthokq9SQipZk",
+      "vector_store_file_id": "file-8A7Utuzb8dthokq9SQipZk",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-537cef0a88.md",
+      "file_id": "file-FPZbkru5ytwZmFnz4SLMwD",
+      "vector_store_file_id": "file-FPZbkru5ytwZmFnz4SLMwD",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-53ac5c4b28.md",
+      "file_id": "file-MdwNy9vK5HqoAq8E2suCmB",
+      "vector_store_file_id": "file-MdwNy9vK5HqoAq8E2suCmB",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-5971408edd.md",
+      "file_id": "file-GDFhQB87ZUS8gxkmwuAM2U",
+      "vector_store_file_id": "file-GDFhQB87ZUS8gxkmwuAM2U",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-602bf2a99e.md",
+      "file_id": "file-BM586gK7HETvZWmQQmDXuF",
+      "vector_store_file_id": "file-BM586gK7HETvZWmQQmDXuF",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-611dfb46df.md",
+      "file_id": "file-V1PWpSz8JzRPEg5Rfzq28R",
+      "vector_store_file_id": "file-V1PWpSz8JzRPEg5Rfzq28R",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-62104e842c.md",
+      "file_id": "file-SBsQ7ArcdYSvT2NGDawtWM",
+      "vector_store_file_id": "file-SBsQ7ArcdYSvT2NGDawtWM",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-6e292fb822.md",
+      "file_id": "file-CWkDk6MsS2aWk25JfdfRCj",
+      "vector_store_file_id": "file-CWkDk6MsS2aWk25JfdfRCj",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-731c1297d3.md",
+      "file_id": "file-3i7TePDrDBkJ4wCN2w9tSp",
+      "vector_store_file_id": "file-3i7TePDrDBkJ4wCN2w9tSp",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-7323d317b5.md",
+      "file_id": "file-AE8FKcizhbx3ebWdfvSckk",
+      "vector_store_file_id": "file-AE8FKcizhbx3ebWdfvSckk",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-7361694efe.md",
+      "file_id": "file-WNpvPHKMthCKy6RRrWp2dQ",
+      "vector_store_file_id": "file-WNpvPHKMthCKy6RRrWp2dQ",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-7385c861db.md",
+      "file_id": "file-EVirB6QdzS9QmoNU2zmxix",
+      "vector_store_file_id": "file-EVirB6QdzS9QmoNU2zmxix",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-76e69740f1.md",
+      "file_id": "file-1q8qPNdw9ZKk6w7QQkMgca",
+      "vector_store_file_id": "file-1q8qPNdw9ZKk6w7QQkMgca",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-8f103ed560.md",
+      "file_id": "file-3kqFoW6faZY54hZeVqarfv",
+      "vector_store_file_id": "file-3kqFoW6faZY54hZeVqarfv",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-935e024947.md",
+      "file_id": "file-4MK69sY9VfDTXmPTznKgBx",
+      "vector_store_file_id": "file-4MK69sY9VfDTXmPTznKgBx",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-93ab73c0b2.md",
+      "file_id": "file-DzR6uH8hhQ6NX1brF6nenP",
+      "vector_store_file_id": "file-DzR6uH8hhQ6NX1brF6nenP",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-93c1624e8a.md",
+      "file_id": "file-RCzzZpPxWk1fPi65SXwbUQ",
+      "vector_store_file_id": "file-RCzzZpPxWk1fPi65SXwbUQ",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-93c44704d7.md",
+      "file_id": "file-UGLE8WoZjMEDoCoLhtqg5K",
+      "vector_store_file_id": "file-UGLE8WoZjMEDoCoLhtqg5K",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-943f3caa6d.md",
+      "file_id": "file-GLYEN1wMuC1nbVM75sm549",
+      "vector_store_file_id": "file-GLYEN1wMuC1nbVM75sm549",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-947d606938.md",
+      "file_id": "file-1A9EvzFHZcuqTMhxyCAVsm",
+      "vector_store_file_id": "file-1A9EvzFHZcuqTMhxyCAVsm",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-a98ae3cc06.md",
+      "file_id": "file-JRij2QiHJufNgqaYXFDfgF",
+      "vector_store_file_id": "file-JRij2QiHJufNgqaYXFDfgF",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-b131671a1f.md",
+      "file_id": "file-Eb64dSp9RYV648ZFcf1b3z",
+      "vector_store_file_id": "file-Eb64dSp9RYV648ZFcf1b3z",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-b161c99c99.md",
+      "file_id": "file-YSFyjFvgWhWcLTJZhqFmLr",
+      "vector_store_file_id": "file-YSFyjFvgWhWcLTJZhqFmLr",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-b69590337b.md",
+      "file_id": "file-BRggCzpsktv1Ls4NfhvrxV",
+      "vector_store_file_id": "file-BRggCzpsktv1Ls4NfhvrxV",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-b7ad3af44b.md",
+      "file_id": "file-UmvyVh84DswJ8eDut2DdYs",
+      "vector_store_file_id": "file-UmvyVh84DswJ8eDut2DdYs",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-bee5fa959b.md",
+      "file_id": "file-RC5v4kkyPm1LSagsSnYGw2",
+      "vector_store_file_id": "file-RC5v4kkyPm1LSagsSnYGw2",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-cc70785f10.md",
+      "file_id": "file-1rWUi2vcBSPfbpvq4gtFCQ",
+      "vector_store_file_id": "file-1rWUi2vcBSPfbpvq4gtFCQ",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-d4f7f3017e.md",
+      "file_id": "file-5Dn3chYEADevh7oJHWUBoW",
+      "vector_store_file_id": "file-5Dn3chYEADevh7oJHWUBoW",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-dc1ab4f86a.md",
+      "file_id": "file-TTne9FB8dWvKkoiCCyPHyV",
+      "vector_store_file_id": "file-TTne9FB8dWvKkoiCCyPHyV",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-f9bd810ccf.md",
+      "file_id": "file-GFNfTP1C5iu62ktgcMBQXr",
+      "vector_store_file_id": "file-GFNfTP1C5iu62ktgcMBQXr",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-fb7afca50d.md",
+      "file_id": "file-5vUGV4NS5c5Qz3v5N8umYB",
+      "vector_store_file_id": "file-5vUGV4NS5c5Qz3v5N8umYB",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-21-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-feb161f31e.md",
+      "file_id": "file-3pGEFnra3JSrFqbgHrSVAD",
+      "vector_store_file_id": "file-3pGEFnra3JSrFqbgHrSVAD",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-22-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-04d6a86fc4.md",
+      "file_id": "file-48F6G4m26rnUdCb9agM72d",
+      "vector_store_file_id": "file-48F6G4m26rnUdCb9agM72d",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-22-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-1805282039.md",
+      "file_id": "file-Fv85YPTZTvvNSiuLdGcJk1",
+      "vector_store_file_id": "file-Fv85YPTZTvvNSiuLdGcJk1",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-22-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-32627c07e9.md",
+      "file_id": "file-QbBzpaSdYvQzB3U75mov4c",
+      "vector_store_file_id": "file-QbBzpaSdYvQzB3U75mov4c",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-22-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-5fe67a5ac9.md",
+      "file_id": "file-M45hQ14u3rE3j2yrvJs7JP",
+      "vector_store_file_id": "file-M45hQ14u3rE3j2yrvJs7JP",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-22-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-bc118c0e6a.md",
+      "file_id": "file-CdLxPbkrPCZyPqmhzVbEyK",
+      "vector_store_file_id": "file-CdLxPbkrPCZyPqmhzVbEyK",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-22-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-ce49bd24b0.md",
+      "file_id": "file-VHt1RdySVkBNpefS6YfCSd",
+      "vector_store_file_id": "file-VHt1RdySVkBNpefS6YfCSd",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-22-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-d4b24a644a.md",
+      "file_id": "file-6h7kK7jHwpAT9MsUjYrnBw",
+      "vector_store_file_id": "file-6h7kK7jHwpAT9MsUjYrnBw",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-22-atividades-sujeitas-a-controle-e-fiscalizacao-ambiental-nao-relacionadas-d54bdfc79f.md",
+      "file_id": "file-VyKShtnyqj71i19AXdzeV2",
+      "vector_store_file_id": "file-VyKShtnyqj71i19AXdzeV2",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-3-industria-metalurgica-3-1-fabricacao-de-aco-e-de-produtos-siderurgicos-46f7ad26dc.md",
+      "file_id": "file-MXz1WV1XjtBuPaHN7Hb9Tm",
+      "vector_store_file_id": "file-MXz1WV1XjtBuPaHN7Hb9Tm",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-3-industria-metalurgica-3-10-fabricacao-de-artefatos-de-ferro-aco-e-de-meta-b8beaa1ea3.md",
+      "file_id": "file-XmdBfp66t38dXXLwhwevKB",
+      "vector_store_file_id": "file-XmdBfp66t38dXXLwhwevKB",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-3-industria-metalurgica-3-11-tempera-e-cementacao-de-aco-recozimento-de-ara-2f14c31e2a.md",
+      "file_id": "file-5oDFGf75v1Tg5CLKAk5dNz",
+      "vector_store_file_id": "file-5oDFGf75v1Tg5CLKAk5dNz",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-3-industria-metalurgica-3-12-metalurgia-de-metais-preciosos-2013-decreto-no-04786d66f4.md",
+      "file_id": "file-JFSNNQgXVFix2wVsSppiGY",
+      "vector_store_file_id": "file-JFSNNQgXVFix2wVsSppiGY",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-3-industria-metalurgica-3-2-producao-de-fundidos-de-ferro-e-aco-forjados-ar-4519dc13d4.md",
+      "file_id": "file-3e9D6gUEUnG9pkeLU7Lz8g",
+      "vector_store_file_id": "file-3e9D6gUEUnG9pkeLU7Lz8g",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-3-industria-metalurgica-3-3-metalurgia-dos-metais-nao-ferrosos-em-formas-pr-8d0847dcd1.md",
+      "file_id": "file-B4DFR5wv9Tu7sc9oHRsrwB",
+      "vector_store_file_id": "file-B4DFR5wv9Tu7sc9oHRsrwB",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-3-industria-metalurgica-3-4-producao-de-laminados-ligas-artefatos-de-metais-db6c99afb5.md",
+      "file_id": "file-WCbSEPMRSGvEoM6PE6PMvp",
+      "vector_store_file_id": "file-WCbSEPMRSGvEoM6PE6PMvp",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-3-industria-metalurgica-3-5-relaminacao-de-metais-nao-ferrosos-inclusive-li-cf8048777b.md",
+      "file_id": "file-LfscuqTqCj2TCELbAgWt3a",
+      "vector_store_file_id": "file-LfscuqTqCj2TCELbAgWt3a",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-3-industria-metalurgica-3-6-producao-de-soldas-e-anodos-e88692c18c.md",
+      "file_id": "file-3ze4Ai3zqizF529w5GTXnH",
+      "vector_store_file_id": "file-3ze4Ai3zqizF529w5GTXnH",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-3-industria-metalurgica-3-7-metalurgia-de-metais-preciosos-a27e1be4eb.md",
+      "file_id": "file-J3Qfqitj57Z7GFM4fpTPSA",
+      "vector_store_file_id": "file-J3Qfqitj57Z7GFM4fpTPSA",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-3-industria-metalurgica-3-8-metalurgia-do-po-inclusive-pecas-moldadas-a141721e59.md",
+      "file_id": "file-6SMFb8P7ffX3CTPaft5AJY",
+      "vector_store_file_id": "file-6SMFb8P7ffX3CTPaft5AJY",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-3-industria-metalurgica-3-9-fabricacao-de-estruturas-metalicas-com-ou-sem-t-e47efe66f3.md",
+      "file_id": "file-GQo36BeqhjBry1H2K4f7FA",
+      "vector_store_file_id": "file-GQo36BeqhjBry1H2K4f7FA",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-4-industria-mecanica-4-1-fabricacao-de-maquinas-aparelhos-pecas-utensilios--f72547f990.md",
+      "file_id": "file-KPTCVBdatEJyMnrzPYMEyk",
+      "vector_store_file_id": "file-KPTCVBdatEJyMnrzPYMEyk",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-5-industria-de-material-eletrico-eletronico-e-comunicacoes-5-2-fabricacao-d-c8b6500306.md",
+      "file_id": "file-SPMCBNcEkYZywDaLyaqwpn",
+      "vector_store_file_id": "file-SPMCBNcEkYZywDaLyaqwpn",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-5-industria-de-material-eletrico-eletronico-e-comunicacoes-5-3-fabricacao-d-a61c9e1c3a.md",
+      "file_id": "file-CxETsbNjSWjxMVAYNdEvj7",
+      "vector_store_file_id": "file-CxETsbNjSWjxMVAYNdEvj7",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-5-industria-de-material-eletrico-eletronico-e-comunicacoes-5-4-fabricacao-d-75ced8a2db.md",
+      "file_id": "file-S8gHZRoNdDSaQMDRvZR8PS",
+      "vector_store_file_id": "file-S8gHZRoNdDSaQMDRvZR8PS",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-6-industria-de-material-de-transporte-6-1-fabricacao-e-montagem-de-veiculos-ae4f07748a.md",
+      "file_id": "file-DoAxsdN6B6pWqZH28yktuv",
+      "vector_store_file_id": "file-DoAxsdN6B6pWqZH28yktuv",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-6-industria-de-material-de-transporte-6-2-fabricacao-e-montagem-de-aeronave-ae5b5f8c51.md",
+      "file_id": "file-FiiGAgAKf7Bwvfd7k3Fi9y",
+      "vector_store_file_id": "file-FiiGAgAKf7Bwvfd7k3Fi9y",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-6-industria-de-material-de-transporte-6-3-fabricacao-e-reparo-de-embarcacoe-ee8f4af09e.md",
+      "file_id": "file-DXUzpubNjhAr1bZqGPHkiW",
+      "vector_store_file_id": "file-DXUzpubNjhAr1bZqGPHkiW",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-7-industria-de-madeira-7-2-preservacao-de-madeira-e94fccafe4.md",
+      "file_id": "file-RzPKMGEh7onDHcnncyehxY",
+      "vector_store_file_id": "file-RzPKMGEh7onDHcnncyehxY",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-7-industria-de-madeira-7-3-fabricacao-de-chapas-placas-de-madeira-aglomerad-640eda55fa.md",
+      "file_id": "file-GPHaeGtmUVJyRt74imR4JB",
+      "vector_store_file_id": "file-GPHaeGtmUVJyRt74imR4JB",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-7-industria-de-madeira-7-4-fabricacao-de-estruturas-de-madeira-e-moveis-78f592f22e.md",
+      "file_id": "file-4ECaNrNHNoyirtdkJpEf9L",
+      "vector_store_file_id": "file-4ECaNrNHNoyirtdkJpEf9L",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-8-industria-de-papel-e-celulose-8-1-fabricacao-de-celulose-e-pasta-mecanica-0306b59bdc.md",
+      "file_id": "file-9hfe4uaAcQWqoKkVfaKB8c",
+      "vector_store_file_id": "file-9hfe4uaAcQWqoKkVfaKB8c",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-8-industria-de-papel-e-celulose-8-2-fabricacao-de-papel-e-papelao-c629373e70.md",
+      "file_id": "file-UjVp6ruavDdn1FTPjPppnT",
+      "vector_store_file_id": "file-UjVp6ruavDdn1FTPjPppnT",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-8-industria-de-papel-e-celulose-8-3-fabricacao-de-artefatos-de-papel-papela-a1b31a750e.md",
+      "file_id": "file-HNuxUebg2Qu9wRNt8EvrVU",
+      "vector_store_file_id": "file-HNuxUebg2Qu9wRNt8EvrVU",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-9-industria-de-borracha-6-5-fabricacao-de-camara-de-ar-0af2a44e26.md",
+      "file_id": "file-Sbtq7A9rpFaExijzp8zcFr",
+      "vector_store_file_id": "file-Sbtq7A9rpFaExijzp8zcFr",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-9-industria-de-borracha-9-1-beneficiamento-de-borracha-natural-9f80a7c148.md",
+      "file_id": "file-ArovG9wQfyy1LrEKB7a5ER",
+      "vector_store_file_id": "file-ArovG9wQfyy1LrEKB7a5ER",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-9-industria-de-borracha-9-3-fabricacao-de-laminados-e-fios-de-borracha-f0757aab9f.md",
+      "file_id": "file-BALCWts1igjXNDK1rBqhVR",
+      "vector_store_file_id": "file-BALCWts1igjXNDK1rBqhVR",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-9-industria-de-borracha-9-4-fabricacao-de-espuma-de-borracha-e-de-artefatos-66ca561add.md",
+      "file_id": "file-FgGKsooazPV2ZYEpV92TTV",
+      "vector_store_file_id": "file-FgGKsooazPV2ZYEpV92TTV",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-9-industria-de-borracha-9-6-fabricacao-de-pneumaticos-843b59fd37.md",
+      "file_id": "file-QETfCUvX9ueRbCUsdcBrTo",
+      "vector_store_file_id": "file-QETfCUvX9ueRbCUsdcBrTo",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/ftes-categoria-9-industria-de-borracha-9-7-recondicionamento-de-pneumaticos-812fdd6bf3.md",
+      "file_id": "file-LzkDgoTEYCXu5SwbPc5ZJ2",
+      "vector_store_file_id": "file-LzkDgoTEYCXu5SwbPc5ZJ2",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/titulo-ftes-categoria-10-industria-de-couros-e-peles-10-1-secagem-e-salga-de-couros-e-pele-4c599b465c.md",
+      "file_id": "file-BNbkLuig7UAJg5mjPV9vDx",
+      "vector_store_file_id": "file-BNbkLuig7UAJg5mjPV9vDx",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/titulo-ftes-categoria-12-industria-de-produtos-de-materia-plastica-12-1-fabricacao-de-lami-8a093c903f.md",
+      "file_id": "file-4GaRVnMoPiBu6Asq7t4kXb",
+      "vector_store_file_id": "file-4GaRVnMoPiBu6Asq7t4kXb",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/titulo-ftes-categoria-2-industria-de-produtos-minerais-nao-metalicos-2-1-beneficiamento-de-b097d9f686.md",
+      "file_id": "file-2X6J7bzBH35yEedYx43Kva",
+      "vector_store_file_id": "file-2X6J7bzBH35yEedYx43Kva",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/titulo-ftes-categoria-2-industria-de-produtos-minerais-nao-metalicos-2-2-fabricacao-e-elab-620e59d256.md",
+      "file_id": "file-GDorPwy8n2wTiBngZzb4xf",
+      "vector_store_file_id": "file-GDorPwy8n2wTiBngZzb4xf",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/titulo-ftes-categoria-5-industria-de-material-eletrico-eletronico-e-comunicacoes-5-1-fabri-2c057b6772.md",
+      "file_id": "file-FVa2ZZ8JrrBNWvTKAyU57J",
+      "vector_store_file_id": "file-FVa2ZZ8JrrBNWvTKAyU57J",
+      "status": "ok"
+    },
+    {
+      "file": "data/fte/rag/titulo-ftes-categoria-7-industria-de-madeira-7-1-serraria-e-desdobramento-de-madeira-ead6630a3a.md",
+      "file_id": "file-KLTvyAGD7QBN9YT949i5Nw",
+      "vector_store_file_id": "file-KLTvyAGD7QBN9YT949i5Nw",
+      "status": "ok"
+    }
+  ]
+}

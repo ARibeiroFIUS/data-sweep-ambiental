@@ -10,6 +10,20 @@ export const SOURCE_REGISTRY = {
     ttlMs: 0,
     featureFlag: "FEATURE_RECEITA_BRASILAPI",
   },
+  receita_opencnpj: {
+    id: "receita_opencnpj",
+    name: "Receita Federal (OpenCNPJ)",
+    timeoutMs: 12000,
+    ttlMs: 0,
+    featureFlag: "FEATURE_RECEITA_OPENCNPJ",
+  },
+  receita_receitaws: {
+    id: "receita_receitaws",
+    name: "Receita Federal (ReceitaWS)",
+    timeoutMs: 12000,
+    ttlMs: 0,
+    featureFlag: "FEATURE_RECEITA_RECEITAWS",
+  },
   cgu_ceis: {
     id: "cgu_ceis",
     name: "CEIS — Empresas Inidôneas e Suspensas",
@@ -107,6 +121,20 @@ export const SOURCE_REGISTRY = {
     timeoutMs: 15000,
     ttlMs: 0,
     featureFlag: "FEATURE_CGU_LICITACOES",
+  },
+  openai_relatorio_ambiental: {
+    id: "openai_relatorio_ambiental",
+    name: "OpenAI — Relatório Ambiental",
+    timeoutMs: 45000,
+    ttlMs: 0,
+    featureFlag: "FEATURE_OPENAI_RELATORIO_AMBIENTAL",
+  },
+  openai_fte_rag: {
+    id: "openai_fte_rag",
+    name: "OpenAI — RAG FTE (CNAE x Enquadramento)",
+    timeoutMs: 60000,
+    ttlMs: 0,
+    featureFlag: "FEATURE_OPENAI_FTE_RAG",
   },
   pgfn_fgts: {
     id: "pgfn_fgts",

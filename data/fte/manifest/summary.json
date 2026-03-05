@@ -1,0 +1,9 @@
+{
+  "generated_at": "2026-03-05T12:15:26.767Z",
+  "index_url": "https://www.gov.br/ibama/pt-br/servicos/cadastros/ctf/ctf-app/ftes/ftes-por-categorias",
+  "total_pages_discovered": 197,
+  "total_pages_processed": 197,
+  "total_sei_documents_discovered": 420,
+  "output_dir": "/Users/andreribeiro/data-sweep-ambiental/data-sweep-ambiental/data/fte",
+  "download_sei_enabled": true
+}
