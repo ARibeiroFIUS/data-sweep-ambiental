@@ -17,6 +17,11 @@
 - `DATABASE_URL` (Postgres Railway)
 - `JOB_ADMIN_TOKEN` (token para endpoint de job)
 
+Variáveis recomendadas para compliance ambiental com cache inteligente:
+
+- `ENV_COMPLIANCE_REUSE_WINDOW_DAYS` (opcional, default `30`)
+- `ENV_COMPLIANCE_REUSE_ENABLED` (opcional, default `true`)
+
 ## 3) Migração do Postgres
 
 Execute no Postgres:
@@ -27,6 +32,8 @@ Execute no Postgres:
 \i db/migrations/003_judicial_coverage.sql
 \i db/migrations/004_search_history.sql
 \i db/migrations/005_brasilio_reverse_lookup_cache.sql
+\i db/migrations/006_partner_search_history.sql
+\i db/migrations/007_environmental_compliance_runs.sql
 ```
 
 Ou rode o conteúdo do arquivo manualmente.

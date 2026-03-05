@@ -400,6 +400,16 @@ export interface EnvironmentalComplianceResult {
     durable: boolean;
     database_configured: boolean;
   };
+  cache?: {
+    reused: boolean;
+    source: "database" | "memory_cache" | "none";
+    reuse_window_days: number;
+    previous_analysis_id: string | null;
+    previous_analyzed_at: string | null;
+    age_days: number | null;
+    forced_refresh?: boolean;
+    message?: string | null;
+  };
   cnpj: string;
   jurisdiction_context: JurisdictionContext;
   company: EnvironmentalCompany;

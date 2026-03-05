@@ -215,6 +215,32 @@ export async function listEnvironmentalAnalysisRuns({ cnpj = "", page = 1, limit
   }
 }
 
+export async function getLatestEnvironmentalAnalysisRunByCnpj({ cnpj = "", maxAgeDays = 30 } = {}) {
+  const activePool = getPool();
+  if (!activePool) return null;
+
+  const normalizedCnpj = normalizeCnpj(cnpj);
+  if (normalizedCnpj.length !== 14) return null;
+
+  const safeMaxAgeDays = Math.max(1, Number.parseInt(String(maxAgeDays), 10) || 30);
+
+  try {
+    const { rows } = await activePool.query(
+      `SELECT analysis_id, cnpj, schema_version, risk_level, payload_json, created_at
+         FROM environmental_analysis_runs
+        WHERE cnpj = $1
+          AND created_at >= (NOW() - ($2 * INTERVAL '1 day'))
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [normalizedCnpj, safeMaxAgeDays],
+    );
+    return rows[0] ?? null;
+  } catch (error) {
+    if (isMissingSchemaError(error)) return null;
+    throw error;
+  }
+}
+
 export async function listActionPlanItems(analysisId) {
   const activePool = getPool();
   if (!activePool) return [];

@@ -31,11 +31,14 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function analyzeEnvironmentalCompliance(cnpj: string): Promise<EnvironmentalComplianceResult> {
+async function analyzeEnvironmentalCompliance(cnpj: string, options?: { forceRefresh?: boolean }): Promise<EnvironmentalComplianceResult> {
   const response = await fetch(COMPLIANCE_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cnpj }),
+    body: JSON.stringify({
+      cnpj,
+      ...(options?.forceRefresh ? { force_refresh: true } : {}),
+    }),
   });
 
   const data: unknown = await response.json().catch(() => null);
@@ -257,6 +260,18 @@ function normalizeActionStatus(value: string | null | undefined): ActionPlanStat
   if (normalized === "em_andamento") return "em_andamento";
   if (normalized === "concluido") return "concluido";
   return "pendente";
+}
+
+function formatPtBrDateTime(value: string | null | undefined) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "America/Sao_Paulo",
+  }).format(date);
 }
 
 function normalizeActionPlanItems(items: unknown): EnvironmentalActionPlanItem[] {
@@ -751,10 +766,10 @@ export default function Index() {
     }
   };
 
-  const handleRun = async () => {
+  const handleRun = async (options?: { forceRefresh?: boolean }) => {
     const clean = cleanCNPJ(cnpj);
     if (!isValidCNPJ(clean)) {
-      setError("CNPJ invalido. Verifique os digitos informados.");
+      setError("CNPJ inválido. Verifique os dígitos informados.");
       return;
     }
 
@@ -763,7 +778,7 @@ export default function Index() {
     setCurrentAgent(1);
 
     try {
-      const payload = await analyzeEnvironmentalCompliance(clean);
+      const payload = await analyzeEnvironmentalCompliance(clean, options);
       await hydratePayload(payload, { animate: true, runCapture: true });
       if (payload.analysis_id) {
         navigate(`/compliance/${payload.analysis_id}/executive`);
@@ -1231,13 +1246,23 @@ export default function Index() {
                 }}
               />
             </div>
-            <button
-              onClick={handleRun}
-              disabled={loading || cleanCNPJ(cnpj).length !== 14}
-              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-medium rounded-lg transition-colors text-sm whitespace-nowrap"
-            >
-              {loading ? "Analisando..." : "Rodar 7 agentes"}
-            </button>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                onClick={() => handleRun()}
+                disabled={loading || cleanCNPJ(cnpj).length !== 14}
+                className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-medium rounded-lg transition-colors text-sm whitespace-nowrap"
+              >
+                {loading ? "Analisando..." : "Rodar 7 agentes"}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRun({ forceRefresh: true })}
+                disabled={loading || cleanCNPJ(cnpj).length !== 14}
+                className="px-4 py-3 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-700 disabled:text-slate-500 text-slate-100 border border-slate-600 rounded-lg transition-colors text-sm whitespace-nowrap"
+              >
+                Forçar atualização
+              </button>
+            </div>
           </div>
 
           {fullResult && (
@@ -1308,6 +1333,20 @@ export default function Index() {
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-5 py-4 text-red-800 text-sm">
             <strong>Erro:</strong> {error}
+          </div>
+        )}
+
+        {fullResult?.cache?.reused && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-5 py-4 text-amber-900 text-sm">
+            <p className="font-semibold">Resultado reaproveitado para economia de custo</p>
+            <p className="mt-1">
+              {fullResult.cache.message ||
+                `Já existia análise deste CNPJ nos últimos ${fullResult.cache.reuse_window_days} dias.`}
+            </p>
+            <p className="mt-1">
+              Data da análise reaproveitada: {formatPtBrDateTime(fullResult.cache.previous_analyzed_at) || "-"} | ID:{" "}
+              {fullResult.cache.previous_analysis_id || fullResult.analysis_id || "-"}
+            </p>
           </div>
         )}
 

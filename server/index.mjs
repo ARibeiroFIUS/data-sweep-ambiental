@@ -12,6 +12,7 @@ import {
 import {
   ensureEnvironmentalComplianceTables,
   getEnvironmentalAnalysisRun,
+  getLatestEnvironmentalAnalysisRunByCnpj,
   isEnvironmentalComplianceStoreEnabled,
   listActionPlanItems,
   listEnvironmentalAnalysisRuns,
@@ -69,6 +70,8 @@ const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const JOB_ADMIN_TOKEN = (process.env.JOB_ADMIN_TOKEN ?? "").trim();
 let pgfnSyncInFlight = null;
 const ENV_ANALYSIS_CACHE_MAX = 200;
+const ENV_COMPLIANCE_REUSE_WINDOW_DAYS = Math.max(1, Number.parseInt(process.env.ENV_COMPLIANCE_REUSE_WINDOW_DAYS ?? "30", 10) || 30);
+const ENV_COMPLIANCE_REUSE_ENABLED = parseBooleanEnv(process.env.ENV_COMPLIANCE_REUSE_ENABLED, true);
 const environmentalRunCache = new Map();
 
 const MIME_TYPES = {
@@ -179,6 +182,79 @@ function listCachedEnvironmentalRuns({ cnpj = "", page = 1, limit = 20 } = {}) {
     limit: safeLimit,
     total: entries.length,
   };
+}
+
+function toValidDate(value) {
+  const date = new Date(String(value ?? ""));
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function computeAgeDays(isoDateLike) {
+  const date = toValidDate(isoDateLike);
+  if (!date) return null;
+  const diffMs = Date.now() - date.getTime();
+  if (!Number.isFinite(diffMs) || diffMs < 0) return 0;
+  return Math.floor(diffMs / (24 * 60 * 60 * 1000));
+}
+
+function formatDateTimePtBr(isoDateLike) {
+  const date = toValidDate(isoDateLike);
+  if (!date) return null;
+  try {
+    return new Intl.DateTimeFormat("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "short",
+      timeZone: "America/Sao_Paulo",
+    }).format(date);
+  } catch {
+    return date.toISOString();
+  }
+}
+
+function buildComplianceCacheMetadata({
+  reused = false,
+  source = "none",
+  analysisId = null,
+  previousAnalyzedAt = null,
+  reuseWindowDays = ENV_COMPLIANCE_REUSE_WINDOW_DAYS,
+  forcedRefresh = false,
+}) {
+  const ageDays = computeAgeDays(previousAnalyzedAt);
+  const formatted = formatDateTimePtBr(previousAnalyzedAt);
+  return {
+    reused: Boolean(reused),
+    source: reused ? source : "none",
+    reuse_window_days: Math.max(1, Number.parseInt(String(reuseWindowDays), 10) || ENV_COMPLIANCE_REUSE_WINDOW_DAYS),
+    previous_analysis_id: analysisId ? String(analysisId) : null,
+    previous_analyzed_at: previousAnalyzedAt ? String(previousAnalyzedAt) : null,
+    age_days: ageDays,
+    forced_refresh: Boolean(forcedRefresh),
+    message: reused
+      ? formatted
+        ? `Consulta reaproveitada: já existe análise deste CNPJ em ${formatted}.`
+        : "Consulta reaproveitada: já existe análise recente deste CNPJ."
+      : forcedRefresh
+      ? "Reanálise forçada executada; resultado anterior não foi reaproveitado."
+      : null,
+  };
+}
+
+function getLatestCachedEnvironmentalRunByCnpj({ cnpj = "", maxAgeDays = ENV_COMPLIANCE_REUSE_WINDOW_DAYS } = {}) {
+  const normalizedCnpj = normalizeCnpj(cnpj);
+  if (normalizedCnpj.length !== 14) return null;
+  const safeMaxAgeDays = Math.max(1, Number.parseInt(String(maxAgeDays), 10) || ENV_COMPLIANCE_REUSE_WINDOW_DAYS);
+
+  const candidates = [...environmentalRunCache.values()]
+    .filter((entry) => entry?.cnpj === normalizedCnpj)
+    .sort((a, b) => new Date(b?.created_at ?? 0).getTime() - new Date(a?.created_at ?? 0).getTime());
+  const latest = candidates[0] ?? null;
+  if (!latest) return null;
+
+  const referenceDate = latest?.payload_json?.analyzed_at || latest?.created_at;
+  const ageDays = computeAgeDays(referenceDate);
+  if (ageDays == null || ageDays > safeMaxAgeDays) return null;
+  return latest;
 }
 
 function buildPersistenceInfo({ durable }) {
@@ -1350,6 +1426,88 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await readJsonBody(req);
       const cnpj = typeof body === "object" && body !== null && "cnpj" in body ? body.cnpj : "";
+      const normalizedCnpj = normalizeCnpj(cnpj);
+      const forceRefreshQuery = String(requestUrl.searchParams.get("force_refresh") ?? "").trim().toLowerCase();
+      const forceRefreshBody =
+        typeof body === "object" &&
+        body !== null &&
+        "force_refresh" in body &&
+        (body.force_refresh === true || String(body.force_refresh).trim().toLowerCase() === "true" || String(body.force_refresh).trim() === "1");
+      const forceRefresh = forceRefreshBody || forceRefreshQuery === "true" || forceRefreshQuery === "1";
+
+      if (ENV_COMPLIANCE_REUSE_ENABLED && !forceRefresh && normalizedCnpj.length === 14) {
+        const dbRecentRun = await getLatestEnvironmentalAnalysisRunByCnpj({
+          cnpj: normalizedCnpj,
+          maxAgeDays: ENV_COMPLIANCE_REUSE_WINDOW_DAYS,
+        });
+        if (dbRecentRun?.payload_json && typeof dbRecentRun.payload_json === "object") {
+          const storedPayload = dbRecentRun.payload_json;
+          const storedAnalysisId = String(dbRecentRun.analysis_id ?? "").trim();
+          const actionPlanItems = await listActionPlanItems(storedAnalysisId);
+          const normalizedActionPlanItems =
+            actionPlanItems.length > 0 ? actionPlanItems : normalizeActionPlanItemsPayload(storedPayload?.action_plan?.items ?? []);
+          const previousAnalyzedAt = storedPayload?.analyzed_at ?? dbRecentRun.created_at ?? null;
+          const reusedPayload = {
+            ...storedPayload,
+            analysis_id: storedAnalysisId || storedPayload?.analysis_id || null,
+            action_plan: {
+              items: normalizedActionPlanItems,
+            },
+            persistence: buildPersistenceInfo({ durable: true }),
+            cache: buildComplianceCacheMetadata({
+              reused: true,
+              source: "database",
+              analysisId: storedAnalysisId || storedPayload?.analysis_id || null,
+              previousAnalyzedAt,
+              reuseWindowDays: ENV_COMPLIANCE_REUSE_WINDOW_DAYS,
+            }),
+          };
+          try {
+            await saveEnvironmentalAnalysisRun({
+              analysisId: storedAnalysisId,
+              cnpj: normalizedCnpj,
+              schemaVersion: reusedPayload?.schema_version ?? "br-v1",
+              riskLevel: reusedPayload?.summary?.risk_level ?? null,
+              payload: reusedPayload,
+            });
+          } catch (storeError) {
+            console.error("[api/environmental-compliance] failed to update reused payload metadata:", storeError);
+          }
+          cacheEnvironmentalRun(reusedPayload);
+          sendJson(res, 200, reusedPayload);
+          return;
+        }
+
+        const memoryRecentRun = getLatestCachedEnvironmentalRunByCnpj({
+          cnpj: normalizedCnpj,
+          maxAgeDays: ENV_COMPLIANCE_REUSE_WINDOW_DAYS,
+        });
+        if (memoryRecentRun?.payload_json && typeof memoryRecentRun.payload_json === "object") {
+          const storedPayload = memoryRecentRun.payload_json;
+          const storedAnalysisId = String(memoryRecentRun.analysis_id ?? "").trim();
+          const normalizedActionPlanItems = normalizeActionPlanItemsPayload(storedPayload?.action_plan?.items ?? []);
+          const previousAnalyzedAt = storedPayload?.analyzed_at ?? memoryRecentRun.created_at ?? null;
+          const reusedPayload = {
+            ...storedPayload,
+            analysis_id: storedAnalysisId || storedPayload?.analysis_id || null,
+            action_plan: {
+              items: normalizedActionPlanItems,
+            },
+            persistence: buildPersistenceInfo({ durable: false }),
+            cache: buildComplianceCacheMetadata({
+              reused: true,
+              source: "memory_cache",
+              analysisId: storedAnalysisId || storedPayload?.analysis_id || null,
+              previousAnalyzedAt,
+              reuseWindowDays: ENV_COMPLIANCE_REUSE_WINDOW_DAYS,
+            }),
+          };
+          cacheEnvironmentalRun(reusedPayload);
+          sendJson(res, 200, reusedPayload);
+          return;
+        }
+      }
+
       const payload = await analyzeEnvironmentalCompliance(String(cnpj ?? ""));
       const analysisId = crypto.randomUUID();
       const normalizedActionPlanItems = normalizeActionPlanItemsPayload(payload?.action_plan?.items ?? []);
@@ -1360,6 +1518,12 @@ const server = http.createServer(async (req, res) => {
           items: normalizedActionPlanItems,
         },
         persistence: buildPersistenceInfo({ durable: false }),
+        cache: buildComplianceCacheMetadata({
+          reused: false,
+          source: "none",
+          reuseWindowDays: ENV_COMPLIANCE_REUSE_WINDOW_DAYS,
+          forcedRefresh: forceRefresh,
+        }),
       };
       cacheEnvironmentalRun(normalizedPayload);
 

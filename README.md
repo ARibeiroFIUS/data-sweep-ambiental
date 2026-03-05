@@ -94,8 +94,12 @@ Operational backend instructions (Postgres, PGFN sync job, cron e variáveis) es
 - Fluxo atual (7 agentes): CNPJ/CNAE -> RAG CNAE x FTE -> Federal -> Estadual -> Municipal -> Areas Contaminadas -> Relatorio IA auditavel
 - Schema de resposta atual: `schema_version: "br-v1"`
 - Campos-chave de auditoria: `jurisdiction_context`, `coverage`, `evidence`, `areas_contaminadas` (estruturado + embed oficial)
+- Reuso inteligente por CNPJ: por padrão, consultas repetidas em até 30 dias reaproveitam a última análise para economizar token/infra.
 - Variaveis recomendadas:
   - `PORTAL_TRANSPARENCIA_API_KEY` (gov.br)
+  - `DATABASE_URL` (Postgres para persistência durável)
+  - `ENV_COMPLIANCE_REUSE_WINDOW_DAYS` (opcional, default `30`)
+  - `ENV_COMPLIANCE_REUSE_ENABLED` (opcional, default `true`)
   - `OPENAI_FTE_VECTOR_STORE_ID` (RAG CNAE x FTE)
   - `OPENAI_API_KEY` (habilita o agente final de relatorio IA)
   - `OPENAI_MODEL` (opcional, default `gpt-4o-mini`)
