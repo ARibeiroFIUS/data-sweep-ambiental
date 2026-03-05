@@ -2858,120 +2858,250 @@ async function generateEnvironmentalAiReport({
     };
   }
 
-  const systemPrompt = [
-    "Você é um especialista sênior em compliance ambiental no Brasil.",
-    "Produza um relatório executivo em português do Brasil, sem inventar fatos.",
-    "Use SOMENTE os dados fornecidos.",
-    "Estruture obrigatoriamente com as seções:",
-    "1) Resumo Executivo",
-    "2) Perfil e CNAEs",
-    "3) Achados Profundos CNAE x FTE (RAG)",
-    "4) Achados Regulatórios (Federal, Estadual, Municipal e Territorial)",
-    "5) Contratações Públicas (gov.br)",
-    "6) Plano de Ação Prioritário (30-60-90 dias)",
-    "7) Checklist de Evidências para Auditoria",
-    "8) Disclaimer Técnico",
-    "Se houver incerteza, explicite.",
-    "Use linguagem objetiva e acionável.",
-  ].join("\n");
-
-  const userPrompt = `Dados estruturados da análise ambiental:\n\n${JSON.stringify(
-    buildEnvironmentalAiPromptInput({
-      company,
-      jurisdictionContext,
-      fteDeepAnalysis,
-      federal,
-      state,
-      municipal,
-      areasContaminadas,
-      govbrContext,
-      coverage,
-      evidence,
-      summary,
-      sources,
-    }),
-    null,
-    2
-  )}`;
-
-  const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", reportTimeoutMs, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: OPENAI_MODEL,
-      temperature: 0.2,
-      max_tokens: 1600,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    }),
+  const promptInput = buildEnvironmentalAiPromptInput({
+    company,
+    jurisdictionContext,
+    fteDeepAnalysis,
+    federal,
+    state,
+    municipal,
+    areasContaminadas,
+    govbrContext,
+    coverage,
+    evidence,
+    summary,
+    sources,
   });
 
-  if (!response) {
+  const sectionPlans = [
+    {
+      id: "core_1_4",
+      headings: [
+        "1) Resumo Executivo",
+        "2) Perfil e CNAEs",
+        "3) Achados Profundos CNAE x FTE (RAG)",
+        "4) Achados Regulatórios (Federal, Estadual, Municipal e Territorial)",
+      ],
+      maxTokens: 900,
+      preferredTimeoutMs: Math.round(reportTimeoutMs * 0.55),
+      payload: {
+        company: promptInput.company,
+        jurisdiction_context: promptInput.jurisdiction_context,
+        summary: promptInput.summary,
+        fte_deep_analysis: promptInput.fte_deep_analysis,
+        federal: promptInput.federal,
+        state: promptInput.state,
+        municipal: promptInput.municipal,
+        areas_contaminadas: promptInput.areas_contaminadas,
+      },
+    },
+    {
+      id: "ops_5_8",
+      headings: [
+        "5) Contratações Públicas (gov.br)",
+        "6) Plano de Ação Prioritário (30-60-90 dias)",
+        "7) Checklist de Evidências para Auditoria",
+        "8) Disclaimer Técnico",
+      ],
+      maxTokens: 800,
+      preferredTimeoutMs: Math.round(reportTimeoutMs * 0.45),
+      payload: {
+        company: {
+          cnpj: promptInput?.company?.cnpj ?? null,
+          razao_social: promptInput?.company?.razao_social ?? null,
+          endereco: promptInput?.company?.endereco ?? null,
+        },
+        govbr_context: promptInput.govbr_context,
+        coverage: promptInput.coverage,
+        summary: promptInput.summary,
+        evidence: Array.isArray(promptInput.evidence) ? promptInput.evidence.slice(0, 60) : [],
+        sources: Array.isArray(promptInput.sources) ? promptInput.sources : [],
+        areas_contaminadas: {
+          method: promptInput?.areas_contaminadas?.method ?? null,
+          status: promptInput?.areas_contaminadas?.status ?? null,
+          limitations: Array.isArray(promptInput?.areas_contaminadas?.limitations)
+            ? promptInput.areas_contaminadas.limitations
+            : [],
+        },
+      },
+    },
+  ];
+
+  const deadline = Date.now() + reportTimeoutMs;
+  const sectionResults = [];
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+
+  for (const section of sectionPlans) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs < 4_500) {
+      sectionResults.push({
+        id: section.id,
+        ok: false,
+        status_reason: "budget_exhausted",
+        message: "Orçamento de tempo esgotado antes desta etapa.",
+      });
+      continue;
+    }
+
+    const sectionTimeoutMs = Math.max(4_500, Math.min(remainingMs - 250, section.preferredTimeoutMs));
+    const sectionSystemPrompt = [
+      "Você é um especialista sênior em compliance ambiental no Brasil.",
+      "Produza parecer técnico-jurídico em português do Brasil, objetivo e auditável.",
+      "Use SOMENTE os dados estruturados fornecidos; não invente fatos.",
+      "Retorne APENAS as seções solicitadas, com títulos idênticos.",
+      "Se faltar dado, declare explicitamente a limitação.",
+    ].join("\n");
+
+    const sectionUserPrompt = [
+      `Gerar somente as seções: ${section.headings.join(" | ")}`,
+      "Dados estruturados:",
+      JSON.stringify(section.payload, null, 2),
+    ].join("\n\n");
+
+    const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", sectionTimeoutMs, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        temperature: 0,
+        max_tokens: section.maxTokens,
+        messages: [
+          { role: "system", content: sectionSystemPrompt },
+          { role: "user", content: sectionUserPrompt },
+        ],
+      }),
+    });
+
+    if (!response) {
+      sectionResults.push({
+        id: section.id,
+        ok: false,
+        status_reason: "timeout_or_network",
+        message: `OpenAI não respondeu na etapa ${section.id} dentro de ${sectionTimeoutMs} ms.`,
+      });
+      continue;
+    }
+
+    if (!response.ok) {
+      const errorPayload = await parseJsonResponse(response);
+      const errorDetail = pickString(errorPayload?.error?.message ?? errorPayload?.message ?? errorPayload?.detail);
+      sectionResults.push({
+        id: section.id,
+        ok: false,
+        status_reason: `http_${response.status}`,
+        message: errorDetail ? `HTTP ${response.status}: ${errorDetail}` : `HTTP ${response.status}`,
+      });
+      continue;
+    }
+
+    const payload = await parseJsonResponse(response);
+    const narrative = pickString(payload?.choices?.[0]?.message?.content);
+    if (!narrative) {
+      sectionResults.push({
+        id: section.id,
+        ok: false,
+        status_reason: "invalid_payload",
+        message: "Resposta sem conteúdo textual na etapa.",
+      });
+      continue;
+    }
+
+    const inputTokens = Number(payload?.usage?.prompt_tokens);
+    const outputTokens = Number(payload?.usage?.completion_tokens);
+    if (Number.isFinite(inputTokens)) totalInputTokens += inputTokens;
+    if (Number.isFinite(outputTokens)) totalOutputTokens += outputTokens;
+
+    sectionResults.push({
+      id: section.id,
+      ok: true,
+      text: narrative.trim(),
+    });
+  }
+
+  const successfulSections = sectionResults.filter((section) => section.ok && pickString(section.text));
+  if (successfulSections.length === 0) {
+    const firstFailure = sectionResults.find((section) => !section.ok);
     return {
       analysis: {
         available: false,
-        reason: "timeout_or_network",
+        reason: firstFailure?.status_reason || "timeout_or_network",
       },
       source: normalizeSourcePayload(sourceId, "unavailable", {
         latencyMs: Date.now() - start,
-        statusReason: "timeout_or_network",
-        message: `OpenAI não respondeu dentro do orçamento de ${reportTimeoutMs} ms.`,
+        statusReason: firstFailure?.status_reason || "timeout_or_network",
+        message: firstFailure?.message || `OpenAI não respondeu dentro do orçamento de ${reportTimeoutMs} ms.`,
       }),
     };
   }
 
-  if (!response.ok) {
-    const errorPayload = await parseJsonResponse(response);
-    const errorDetail = pickString(errorPayload?.error?.message ?? errorPayload?.message ?? errorPayload?.detail);
-    return {
-      analysis: {
-        available: false,
-        reason: errorDetail ? `OpenAI HTTP ${response.status}: ${errorDetail}` : `OpenAI HTTP ${response.status}`,
-      },
-      source: normalizeSourcePayload(sourceId, "error", {
-        latencyMs: Date.now() - start,
-        statusReason: `http_${response.status}`,
-        message: errorDetail ? `OpenAI retornou ${response.status}: ${errorDetail}` : undefined,
-      }),
-    };
-  }
+  const sectionMap = new Map(successfulSections.map((section) => [section.id, section.text]));
+  const narrative = [
+    sectionMap.get("core_1_4") ||
+      [
+        "## 1) Resumo Executivo",
+        "Seção não concluída no orçamento de tempo desta execução.",
+        "",
+        "## 2) Perfil e CNAEs",
+        "Seção não concluída no orçamento de tempo desta execução.",
+        "",
+        "## 3) Achados Profundos CNAE x FTE (RAG)",
+        "Seção não concluída no orçamento de tempo desta execução.",
+        "",
+        "## 4) Achados Regulatórios (Federal, Estadual, Municipal e Territorial)",
+        "Seção não concluída no orçamento de tempo desta execução.",
+      ].join("\n"),
+    sectionMap.get("ops_5_8") ||
+      [
+        "## 5) Contratações Públicas (gov.br)",
+        "Seção não concluída no orçamento de tempo desta execução.",
+        "",
+        "## 6) Plano de Ação Prioritário (30-60-90 dias)",
+        "Seção não concluída no orçamento de tempo desta execução.",
+        "",
+        "## 7) Checklist de Evidências para Auditoria",
+        "Seção não concluída no orçamento de tempo desta execução.",
+        "",
+        "## 8) Disclaimer Técnico",
+        "Seção não concluída no orçamento de tempo desta execução.",
+      ].join("\n"),
+  ]
+    .join("\n\n")
+    .trim();
 
-  const payload = await parseJsonResponse(response);
-  const narrative = pickString(payload?.choices?.[0]?.message?.content);
-  if (!narrative) {
-    return {
-      analysis: {
-        available: false,
-        reason: "Resposta da OpenAI sem conteúdo textual.",
-      },
-      source: normalizeSourcePayload(sourceId, "error", {
-        latencyMs: Date.now() - start,
-        statusReason: "invalid_payload",
-      }),
-    };
-  }
-
-  const inputTokens = Number(payload?.usage?.prompt_tokens);
-  const outputTokens = Number(payload?.usage?.completion_tokens);
+  const failedSections = sectionResults.filter((section) => !section.ok);
+  const partial = failedSections.length > 0;
 
   return {
     analysis: {
       available: true,
       narrative,
       model: OPENAI_MODEL,
-      ...(Number.isFinite(inputTokens) ? { input_tokens: inputTokens } : {}),
-      ...(Number.isFinite(outputTokens) ? { output_tokens: outputTokens } : {}),
+      partial,
+      ...(partial
+        ? {
+            reason: "partial_generation",
+            partial_failures: failedSections.map((section) => ({
+              section: section.id,
+              status_reason: section.status_reason,
+              message: section.message,
+            })),
+          }
+        : {}),
+      ...(totalInputTokens > 0 ? { input_tokens: totalInputTokens } : {}),
+      ...(totalOutputTokens > 0 ? { output_tokens: totalOutputTokens } : {}),
       generated_at: new Date().toISOString(),
     },
     source: normalizeSourcePayload(sourceId, "success", {
       latencyMs: Date.now() - start,
-      statusReason: "ok",
-      evidenceCount: 1,
+      statusReason: partial ? "partial_success" : "ok",
+      message: partial
+        ? `Relatório IA gerado parcialmente (${successfulSections.length}/${sectionPlans.length} etapa(s)).`
+        : "Relatório IA completo gerado com sucesso.",
+      evidenceCount: successfulSections.length,
     }),
   };
 }
