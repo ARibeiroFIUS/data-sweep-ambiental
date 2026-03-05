@@ -1596,6 +1596,26 @@ function applyLegalStabilityGuards({ analysis, cnaes, citations }) {
         );
       }
 
+      // Política conservadora: com aderência técnica mínima, evitar "não classificado".
+      if (deterministicMatch && (next.risco === "nao_classificado" || next.risco === "baixo")) {
+        next.risco = "medio";
+        next.probabilidade_enquadramento =
+          next.probabilidade_enquadramento === "indefinida" || next.probabilidade_enquadramento === "baixa"
+            ? "media"
+            : next.probabilidade_enquadramento;
+        if (next.ftes_relacionadas.length === 0) {
+          const deterministicRef = buildDeterministicFteReference(deterministicMatch.category, deterministicMatch.matchType);
+          if (deterministicRef) next.ftes_relacionadas = [deterministicRef];
+        }
+        next.lacunas = limitStringArray(
+          [
+            ...next.lacunas,
+            "Critério conservador aplicado: há aderência técnica preliminar, exigindo validação documental da FTE.",
+          ],
+          3
+        );
+      }
+
       if (next.risco !== "nao_classificado" && next.obrigacoes.length === 0) {
         next.obrigacoes = [
           "Formalizar enquadramento com base na FTE oficial e registrar parecer técnico-jurídico de suporte.",
