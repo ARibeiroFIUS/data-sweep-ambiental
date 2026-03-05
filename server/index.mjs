@@ -1812,7 +1812,20 @@ const server = http.createServer(async (req, res) => {
       let fallbackLongitude = null;
 
       if (!resolvedMapUrl && cnpj) {
-        const analysis = await analyzeEnvironmentalCompliance(cnpj);
+        let analysis = null;
+        const normalized = normalizeCnpj(cnpj);
+        if (normalized.length === 14) {
+          const recent = await getLatestEnvironmentalAnalysisRunByCnpj({
+            cnpj: normalized,
+            maxAgeDays: 365,
+          });
+          if (recent?.payload_json && typeof recent.payload_json === "object") {
+            analysis = recent.payload_json;
+          }
+        }
+        if (!analysis) {
+          analysis = await analyzeEnvironmentalCompliance(cnpj);
+        }
         resolvedMapUrl = String(analysis?.areas_contaminadas?.official_map_open_url ?? "");
         resolvedRazaoSocial = resolvedRazaoSocial || String(analysis?.company?.razao_social ?? "");
         resolvedCnpj = resolvedCnpj || String(analysis?.cnpj ?? "");
