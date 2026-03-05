@@ -134,7 +134,7 @@ async function launchChromium() {
   const systemChromiumPath = await resolveSystemChromiumPath();
   const launchOptions = {
     headless: process.env.AREAS_CAPTURE_HEADLESS !== "false",
-    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+    args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--single-process", "--no-zygote"],
   };
 
   try {
@@ -367,7 +367,7 @@ export async function captureAreasContaminadasScreenshot(input = {}) {
   const cnpjToken = sanitizeFileToken(String(input?.cnpj ?? ""), "no-cnpj");
   const nameToken = sanitizeFileToken(String(input?.razaoSocial ?? ""), "no-name");
   const randomToken = crypto.randomBytes(4).toString("hex");
-  const fileName = `areas-${cnpjToken}-${nameToken}-${Date.now()}-${randomToken}.png`;
+  const baseFileName = `areas-${cnpjToken}-${nameToken}-${Date.now()}-${randomToken}`;
 
   let browser = null;
   let context = null;
@@ -380,7 +380,10 @@ export async function captureAreasContaminadasScreenshot(input = {}) {
     context = await browser.newContext({
       ignoreHTTPSErrors: true,
       userAgent: DEFAULT_USER_AGENT,
-      viewport: { width: 1440, height: 1900 },
+      viewport: {
+        width: Math.max(960, Number.parseInt(process.env.AREAS_CAPTURE_VIEWPORT_WIDTH ?? "1280", 10) || 1280),
+        height: Math.max(700, Number.parseInt(process.env.AREAS_CAPTURE_VIEWPORT_HEIGHT ?? "900", 10) || 900),
+      },
     });
     page = await context.newPage();
     page.setDefaultTimeout(Math.max(20_000, Number.parseInt(process.env.AREAS_CAPTURE_TIMEOUT_MS ?? "50000", 10) || 50_000));
@@ -406,12 +409,35 @@ export async function captureAreasContaminadasScreenshot(input = {}) {
     await stampCaptureContext(page, contextQuery, searchAttempt.ok ? "search_applied" : "search_fallback");
     await page.waitForTimeout(550);
 
-    const filePath = path.join(DEFAULT_CAPTURE_DIR, fileName);
-    await page.screenshot({
-      path: filePath,
-      fullPage: process.env.AREAS_CAPTURE_FULL_PAGE === "true",
-      type: "png",
-    });
+    let fileName = `${baseFileName}.png`;
+    let filePath = path.join(DEFAULT_CAPTURE_DIR, fileName);
+    let mimeType = "image/png";
+    try {
+      await page.screenshot({
+        path: filePath,
+        fullPage: process.env.AREAS_CAPTURE_FULL_PAGE === "true",
+        type: "png",
+        animations: "disabled",
+        caret: "hide",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/Target crashed/i.test(message)) throw error;
+
+      await page.setViewportSize({ width: 1024, height: 768 }).catch(() => {});
+      await page.waitForTimeout(600);
+      fileName = `${baseFileName}.jpg`;
+      filePath = path.join(DEFAULT_CAPTURE_DIR, fileName);
+      mimeType = "image/jpeg";
+      await page.screenshot({
+        path: filePath,
+        fullPage: false,
+        type: "jpeg",
+        quality: 70,
+        animations: "disabled",
+        caret: "hide",
+      });
+    }
 
     const fileStats = await stat(filePath);
     const base64 = includeBase64 ? (await readFile(filePath)).toString("base64") : null;
@@ -426,7 +452,7 @@ export async function captureAreasContaminadasScreenshot(input = {}) {
       map_url: mapUrl,
       file_name: fileName,
       file_path: filePath,
-      mime_type: "image/png",
+      mime_type: mimeType,
       bytes: Number(fileStats.size ?? 0),
       image_base64: base64,
       captured_at: new Date().toISOString(),
