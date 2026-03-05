@@ -560,6 +560,20 @@ function dedupeDetailLinks(links: DetailPanelLink[]) {
   return deduped;
 }
 
+function formatFteReferenceTitle(ref: { codigo?: string; titulo?: string; categoria?: string }) {
+  const parts = [ref.codigo ? `FTE ${ref.codigo}` : null, ref.titulo ?? null, ref.categoria ?? null].filter(Boolean);
+  return parts.length > 0 ? parts.join(" | ") : "FTE relacionada";
+}
+
+function formatFteReferenceCnaes(cnaes: string[] | undefined) {
+  const normalized = Array.isArray(cnaes)
+    ? cnaes
+        .map((item) => String(item ?? "").trim())
+        .filter(Boolean)
+    : [];
+  return normalized.length > 0 ? normalized.join(", ") : "não informado";
+}
+
 function DetailActionButton({
   onClick,
   label = "Detalhar",
@@ -1024,10 +1038,13 @@ export default function Index() {
 
   const openRagFindingDetails = (item: FteDeepAnalysis["findings"][number]) => {
     const refs = item.ftes_relacionadas.map((ref) => {
-      const first = [ref.codigo, ref.titulo, ref.categoria].filter(Boolean).join(" | ");
+      const first = `${formatFteReferenceTitle(ref)} | CNAEs na FTE: ${formatFteReferenceCnaes(ref.cnaes)}`;
       const second = [ref.justificativa, ref.trecho].filter(Boolean).join(" | ");
       return second ? `${first} -> ${second}` : first;
     });
+    const cnaeFteMatrix = item.ftes_relacionadas.map(
+      (ref) => `${item.cnae_codigo} -> ${formatFteReferenceTitle(ref)} -> CNAEs na FTE: ${formatFteReferenceCnaes(ref.cnaes)}`
+    );
     const links = dedupeDetailLinks([
       ...item.ftes_relacionadas
         .filter((ref) => Boolean(ref.url))
@@ -1053,6 +1070,7 @@ export default function Index() {
       status: item.probabilidade_enquadramento,
       description: item.tese_enquadramento || "Sem tese textual detalhada nesta execução.",
       sections: [
+        { title: "Matriz CNAE x FTE", items: cnaeFteMatrix.length > 0 ? cnaeFteMatrix : [`${item.cnae_codigo} -> FTE não informada nesta execução`] },
         { title: "Obrigações sugeridas", items: item.obrigacoes },
         { title: "Riscos jurídicos", items: item.riscos_juridicos },
         { title: "Recomendações de ação", items: item.recomendacoes_acao },
@@ -1695,7 +1713,17 @@ export default function Index() {
                           </div>
                           {item.tese_enquadramento && <p className="text-gray-600 mt-2">{item.tese_enquadramento}</p>}
                           {item.ftes_relacionadas.length > 0 && (
-                            <p className="text-gray-500 mt-1">FTEs relacionadas: {item.ftes_relacionadas.map((fte) => fte.codigo || fte.titulo).filter(Boolean).join(", ")}</p>
+                            <div className="mt-2 rounded-md border border-sky-100 bg-sky-50 px-2 py-2 text-[11px] text-sky-900 space-y-1">
+                              {item.ftes_relacionadas.map((fte, refIndex) => (
+                                <p key={`${item.cnae_codigo}-fte-${refIndex}`}>
+                                  <strong>CNAE {item.cnae_codigo}</strong>
+                                  {" -> "}
+                                  {formatFteReferenceTitle(fte)}
+                                  {" -> "}
+                                  <strong>CNAEs na FTE:</strong> {formatFteReferenceCnaes(fte.cnaes)}
+                                </p>
+                              ))}
+                            </div>
                           )}
                         </div>
                       ))}
@@ -1740,9 +1768,17 @@ export default function Index() {
                               </div>
                               {item.tese_enquadramento && <p className="text-gray-600 mt-2">{item.tese_enquadramento}</p>}
                               {item.ftes_relacionadas.length > 0 && (
-                                <p className="text-gray-500 mt-1">
-                                  FTEs relacionadas: {item.ftes_relacionadas.map((fte) => fte.codigo || fte.titulo).filter(Boolean).join(", ")}
-                                </p>
+                                <div className="mt-2 rounded-md border border-sky-100 bg-sky-50 px-2 py-2 text-[11px] text-sky-900 space-y-1">
+                                  {item.ftes_relacionadas.map((fte, refIndex) => (
+                                    <p key={`${item.cnae_codigo}-fallback-fte-${refIndex}`}>
+                                      <strong>CNAE {item.cnae_codigo}</strong>
+                                      {" -> "}
+                                      {formatFteReferenceTitle(fte)}
+                                      {" -> "}
+                                      <strong>CNAEs na FTE:</strong> {formatFteReferenceCnaes(fte.cnaes)}
+                                    </p>
+                                  ))}
+                                </div>
                               )}
                             </div>
                           ))}

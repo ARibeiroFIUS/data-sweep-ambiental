@@ -40,6 +40,7 @@ export interface FteDeepReference {
   codigo?: string;
   titulo?: string;
   categoria?: string;
+  cnaes?: string[];
   justificativa?: string;
   url?: string;
   trecho?: string;

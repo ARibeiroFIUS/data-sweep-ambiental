@@ -1349,6 +1349,18 @@ function normalizeFteReference(entry) {
   const justificativa = trimText(entry?.justificativa ?? entry?.encaixe ?? entry?.match_reason ?? entry?.rationale, 220);
   const url = trimText(entry?.url ?? entry?.link ?? entry?.fonte, 300);
   const trecho = trimText(entry?.trecho ?? entry?.citacao ?? entry?.quote, 300);
+  const cnaesRaw = Array.isArray(entry?.cnaes)
+    ? entry.cnaes
+    : Array.isArray(entry?.cnaes_relacionados)
+    ? entry.cnaes_relacionados
+    : Array.isArray(entry?.cnae_relacionados)
+    ? entry.cnae_relacionados
+    : typeof entry?.cnaes === "string"
+    ? entry.cnaes.split(/[;,]/)
+    : typeof entry?.cnaes_relacionados === "string"
+    ? entry.cnaes_relacionados.split(/[;,]/)
+    : [];
+  const cnaes = limitStringArray(cnaesRaw, 12);
 
   if (!codigo && !titulo && !justificativa && !url && !trecho) return null;
 
@@ -1359,6 +1371,7 @@ function normalizeFteReference(entry) {
     ...(justificativa ? { justificativa } : {}),
     ...(url ? { url } : {}),
     ...(trecho ? { trecho } : {}),
+    ...(cnaes.length > 0 ? { cnaes } : {}),
   };
 }
 
@@ -1368,6 +1381,7 @@ function buildDeterministicFteReference(category, matchType) {
     codigo: String(category.id ?? ""),
     titulo: `Cat. ${category.id} - ${category.name}`,
     categoria: category.name,
+    cnaes: Array.isArray(category.cnae_prefixes) ? category.cnae_prefixes : [],
     justificativa:
       matchType === "prefix"
         ? "Aderência preliminar por prefixo CNAE."
@@ -1991,6 +2005,7 @@ async function generateFteDeepCnaeAnalysis({ company }) {
     '          "codigo": "string",',
     '          "titulo": "string",',
     '          "categoria": "string",',
+    '          "cnaes": ["string"],',
     '          "justificativa": "string",',
     '          "url": "string",',
     '          "trecho": "string"',
@@ -2003,6 +2018,7 @@ async function generateFteDeepCnaeAnalysis({ company }) {
     "}",
     "Seja extremamente conciso: no máximo 1 item por lista (obrigacoes, riscos_juridicos, recomendacoes_acao, lacunas) e no máximo 140 caracteres por campo textual longo.",
     "Use no máximo 1 FTE relacionada por CNAE.",
+    "Em cada FTE relacionada, preencha o campo 'cnaes' com os CNAEs/faixas CNAE citados na própria FTE quando disponíveis.",
     "Se não houver citação textual direta, mas houver aderência técnica por prefixo/descrição do CNAE com categoria FTE, classifique no mínimo como risco 'medio' e declare lacunas.",
     "Use risco 'nao_classificado' apenas quando não houver aderência técnica mínima identificável.",
   ].join("\n");
