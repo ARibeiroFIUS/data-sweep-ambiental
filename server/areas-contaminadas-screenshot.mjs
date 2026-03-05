@@ -13,6 +13,7 @@ const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
 let chromiumInstallPromise = null;
+let resolvedChromiumPathPromise = null;
 
 function sanitizeFileToken(value, fallback = "capture") {
   const normalized = String(value ?? "")
@@ -93,12 +94,48 @@ async function ensureChromiumInstalled() {
   await chromiumInstallPromise;
 }
 
+async function resolveSystemChromiumPath() {
+  if (!resolvedChromiumPathPromise) {
+    resolvedChromiumPathPromise = (async () => {
+      const explicit = String(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? process.env.CHROMIUM_PATH ?? "").trim();
+      const directCandidates = [explicit, "/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome"];
+      for (const candidate of directCandidates) {
+        if (!candidate) continue;
+        try {
+          const file = await stat(candidate);
+          if (file.isFile()) return candidate;
+        } catch {
+          // keep trying
+        }
+      }
+
+      try {
+        const lookup = await execFileAsync("sh", [
+          "-lc",
+          "command -v chromium || command -v chromium-browser || command -v google-chrome || true",
+        ]);
+        const discovered = String(lookup?.stdout ?? "").trim().split(/\s+/)[0];
+        if (discovered) return discovered;
+      } catch {
+        // ignore
+      }
+
+      return "";
+    })().finally(() => {
+      resolvedChromiumPathPromise = null;
+    });
+  }
+  return resolvedChromiumPathPromise;
+}
+
 async function launchChromium() {
   const playwrightModule = await import("@playwright/test");
   const chromium = playwrightModule.chromium;
+  const systemChromiumPath = await resolveSystemChromiumPath();
   const launchOptions = {
     headless: process.env.AREAS_CAPTURE_HEADLESS !== "false",
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
+    ...(systemChromiumPath ? { executablePath: systemChromiumPath } : {}),
   };
 
   try {
@@ -107,7 +144,11 @@ async function launchChromium() {
     const reason = summarizeError(error);
     if (reason !== "chromium_not_installed") throw error;
     await ensureChromiumInstalled();
-    return chromium.launch(launchOptions);
+    return chromium.launch({
+      ...launchOptions,
+      // after install, prefer Playwright-managed executable path
+      ...(systemChromiumPath ? {} : { executablePath: undefined }),
+    });
   }
 }
 

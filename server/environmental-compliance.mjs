@@ -21,6 +21,8 @@ const OPENAI_FTE_VECTOR_STORE_ID = (
   .trim();
 const OPENAI_FTE_RAG_TIMEOUT_MS = Number.parseInt(process.env.OPENAI_FTE_RAG_TIMEOUT_MS ?? "18000", 10);
 const OPENAI_FTE_RAG_RETRY_TIMEOUT_MS = Number.parseInt(process.env.OPENAI_FTE_RAG_RETRY_TIMEOUT_MS ?? "0", 10);
+const OPENAI_FTE_RAG_CNAE_LIMIT = Number.parseInt(process.env.OPENAI_FTE_RAG_CNAE_LIMIT ?? "8", 10);
+const OPENAI_FTE_RAG_MAX_OUTPUT_TOKENS = Number.parseInt(process.env.OPENAI_FTE_RAG_MAX_OUTPUT_TOKENS ?? "3200", 10);
 const OPENAI_RELATORIO_TIMEOUT_MS = Number.parseInt(process.env.OPENAI_RELATORIO_TIMEOUT_MS ?? "15000", 10);
 const ORCHESTRATION_VERSION = "2026.03.05.1";
 const SEMIL_AREAS_CONTAMINADAS_APP_ID = "77da778c122c4ccda8a8d6babce61b6b";
@@ -1680,6 +1682,37 @@ async function queryGovBrContractsContext(cnpj) {
   };
 }
 
+function buildRagCnaeScope(cnaes, limitRaw = OPENAI_FTE_RAG_CNAE_LIMIT) {
+  const items = Array.isArray(cnaes) ? cnaes : [];
+  const safeLimit = Math.max(3, Math.min(20, Number.isFinite(limitRaw) ? limitRaw : 8));
+  const deduped = [];
+  const seen = new Set();
+  for (const item of items) {
+    const key = normalizeCnaeCode(item?.codigo);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(item);
+  }
+
+  const scored = deduped.map((item, index) => {
+    const match = matchFteCategoryForCnae(item);
+    let score = Boolean(item?.principal) ? 100 : 0;
+    if (match?.matchType === "prefix") score += 30;
+    if (match?.matchType === "keyword") score += 20;
+    return { item, index, score };
+  });
+
+  scored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.index - b.index;
+  });
+
+  return {
+    selected: scored.slice(0, safeLimit).map((entry) => entry.item),
+    omitted: scored.slice(safeLimit).map((entry) => entry.item),
+  };
+}
+
 async function generateFteDeepCnaeAnalysis({ company }) {
   const sourceId = "openai_fte_rag";
   const sourceConfig = resolveSourceConfig(sourceId, "OpenAI - Analise CNAE x FTE", 60000);
@@ -1731,9 +1764,17 @@ async function generateFteDeepCnaeAnalysis({ company }) {
     };
   }
 
+  const ragScope = buildRagCnaeScope(cnaes, OPENAI_FTE_RAG_CNAE_LIMIT);
+  const cnaesForRag = ragScope.selected;
+  const omittedCnaesCount = ragScope.omitted.length;
+  const ragMaxOutputTokens = Math.max(
+    1800,
+    Math.min(6000, Number.isFinite(OPENAI_FTE_RAG_MAX_OUTPUT_TOKENS) ? OPENAI_FTE_RAG_MAX_OUTPUT_TOKENS : 3200)
+  );
+
   const systemPrompt = [
     "Você atua como auditor ambiental e advogado regulatório sênior no Brasil.",
-    "Analise o encaixe de CADA CNAE informado nas FTEs do IBAMA usando exclusivamente evidências recuperadas pela ferramenta file_search.",
+    "Analise o encaixe dos CNAEs priorizados nas FTEs do IBAMA usando exclusivamente evidências recuperadas pela ferramenta file_search.",
     "Não invente fatos, não invente normas e não afirme correspondências sem lastro nos arquivos consultados.",
     "Priorize apontar fronteiras de enquadramento: o que entra, o que não entra, linhas de corte, obrigações e riscos jurídicos.",
     "Responda OBRIGATORIAMENTE em JSON valido (sem markdown) com a estrutura:",
@@ -1766,7 +1807,8 @@ async function generateFteDeepCnaeAnalysis({ company }) {
     '  "overall_recommendations": ["string"],',
     '  "legal_risks": ["string"]',
     "}",
-    "Seja objetivo: no máximo 2 itens por lista (obrigacoes, riscos_juridicos, recomendacoes_acao, lacunas) e no máximo 220 caracteres por campo textual longo.",
+    "Seja extremamente conciso: no máximo 1 item por lista (obrigacoes, riscos_juridicos, recomendacoes_acao, lacunas) e no máximo 140 caracteres por campo textual longo.",
+    "Use no máximo 1 FTE relacionada por CNAE.",
     "Se não houver evidência suficiente para um CNAE, preencha lacunas explicitamente e use risco 'nao_classificado'.",
   ].join("\n");
 
@@ -1775,7 +1817,8 @@ async function generateFteDeepCnaeAnalysis({ company }) {
       cnpj: company?.cnpj ?? null,
       razao_social: company?.razao_social ?? null,
       nome_fantasia: company?.nome_fantasia ?? null,
-      cnaes,
+      cnaes_priorizados_para_rag: cnaesForRag,
+      cnaes_fora_do_escopo_nesta_execucao: omittedCnaesCount,
     },
     null,
     2
@@ -1801,7 +1844,7 @@ async function generateFteDeepCnaeAnalysis({ company }) {
       },
     ],
     tool_choice: "auto",
-    max_output_tokens: 4200,
+    max_output_tokens: ragMaxOutputTokens,
   };
 
   const runFteOpenAiRequest = (timeoutMs) =>
@@ -1884,7 +1927,7 @@ async function generateFteDeepCnaeAnalysis({ company }) {
   const outputTokens = Number(payload?.usage?.output_tokens ?? payload?.usage?.completion_tokens);
   const tokenCapReached =
     Number.isFinite(outputTokens) && Number.isFinite(requestPayload.max_output_tokens)
-      ? outputTokens >= Number(requestPayload.max_output_tokens) - 10
+      ? outputTokens >= Number(requestPayload.max_output_tokens) - 15
       : false;
 
   if (!parsedObject) {
@@ -1897,18 +1940,23 @@ async function generateFteDeepCnaeAnalysis({ company }) {
         ...fallbackAnalysis,
         model: OPENAI_FTE_MODEL,
         vector_store_id: OPENAI_FTE_VECTOR_STORE_ID,
+        scope: {
+          total_cnaes: cnaes.length,
+          rag_selected_cnaes: cnaesForRag.length,
+          rag_omitted_cnaes: omittedCnaesCount,
+        },
         ...(Number.isFinite(inputTokens) ? { input_tokens: inputTokens } : {}),
         ...(Number.isFinite(outputTokens) ? { output_tokens: outputTokens } : {}),
         generated_at: new Date().toISOString(),
         parse_warning: tokenCapReached
-          ? "IA atingiu limite de tokens e retornou JSON truncado; fallback determinístico aplicado."
+          ? "IA atingiu limite de tokens e retornou JSON truncado; escopo RAG foi priorizado e fallback determinístico aplicado."
           : "IA retornou payload não parseável; fallback determinístico aplicado.",
       },
       source: normalizeSourcePayload(sourceId, "error", {
         latencyMs: Date.now() - start,
         statusReason: tokenCapReached ? "output_truncated" : "invalid_payload",
         message: tokenCapReached
-          ? "OpenAI retornou JSON truncado por limite de tokens; fallback determinístico aplicado."
+          ? "OpenAI retornou JSON truncado por limite de tokens no escopo priorizado; fallback determinístico aplicado."
           : "OpenAI retornou conteúdo não estruturado; fallback determinístico aplicado.",
         evidenceCount: Math.max(citations.length, Number(fallbackAnalysis?.stats?.total_findings ?? 0), 1),
       }),
@@ -1921,6 +1969,11 @@ async function generateFteDeepCnaeAnalysis({ company }) {
     citations,
     model: OPENAI_FTE_MODEL,
     vector_store_id: OPENAI_FTE_VECTOR_STORE_ID,
+    scope: {
+      total_cnaes: cnaes.length,
+      rag_selected_cnaes: cnaesForRag.length,
+      rag_omitted_cnaes: omittedCnaesCount,
+    },
     ...(Number.isFinite(inputTokens) ? { input_tokens: inputTokens } : {}),
     ...(Number.isFinite(outputTokens) ? { output_tokens: outputTokens } : {}),
     generated_at: new Date().toISOString(),

@@ -2,10 +2,10 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npm run build"
+    "buildCommand": "PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium && npm run build"
   },
   "deploy": {
-    "startCommand": "npm run start",
+    "startCommand": "PLAYWRIGHT_BROWSERS_PATH=0 npm run start",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }

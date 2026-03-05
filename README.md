@@ -106,6 +106,8 @@ Operational backend instructions (Postgres, PGFN sync job, cron e variáveis) es
   - `OPENAI_FTE_MODEL` (opcional, default `OPENAI_MODEL`)
   - `OPENAI_FTE_RAG_TIMEOUT_MS` (opcional, default `18000`; orçamento do agente RAG)
   - `OPENAI_FTE_RAG_RETRY_TIMEOUT_MS` (opcional, default `0`; retry adicional do RAG)
+  - `OPENAI_FTE_RAG_CNAE_LIMIT` (opcional, default `8`; CNAEs priorizados no RAG)
+  - `OPENAI_FTE_RAG_MAX_OUTPUT_TOKENS` (opcional, default `3200`; limite de saída do RAG)
   - `OPENAI_RELATORIO_TIMEOUT_MS` (opcional, default `15000`; orçamento do relatório IA)
 
 ## Investigação profunda (PJ -> PF -> PJ)
