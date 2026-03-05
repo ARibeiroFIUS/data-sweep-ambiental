@@ -30,99 +30,99 @@ const SEMIL_AREAS_LAYER_IDS = [1, 2];
 const FTE_CATEGORIES = [
   {
     id: 1,
-    name: "Extracao e Tratamento de Minerais",
+    name: "Extração e Tratamento de Minerais",
     cnae_prefixes: ["05", "06", "07", "08", "09"],
-    keywords: ["mineracao", "extracao mineral", "pedreira", "areia", "argila", "calcario"],
+    keywords: ["mineração", "extração mineral", "pedreira", "areia", "argila", "calcário"],
   },
   {
     id: 2,
-    name: "Industria de Produtos Minerais Nao Metalicos",
+    name: "Indústria de Produtos Minerais Não Metálicos",
     cnae_prefixes: ["23"],
     keywords: ["ceramica", "cimento", "vidro", "gesso", "amianto"],
   },
   {
     id: 3,
-    name: "Industria Metalurgica",
+    name: "Indústria Metalúrgica",
     cnae_prefixes: ["24"],
     keywords: ["siderurgia", "metalurgia", "aco", "ferro", "fundicao"],
   },
   {
     id: 4,
-    name: "Industria Mecanica",
+    name: "Indústria Mecânica",
     cnae_prefixes: ["25", "28"],
     keywords: ["maquinas", "equipamentos", "caldeiraria", "usinagem"],
   },
   {
     id: 5,
-    name: "Industria de Material Eletrico, Eletronico e Comunicacoes",
+    name: "Indústria de Material Elétrico, Eletrônico e Comunicações",
     cnae_prefixes: ["26", "27"],
-    keywords: ["eletronico", "eletrico", "telecomunicacao", "semicondutor"],
+    keywords: ["eletrônico", "elétrico", "telecomunicação", "semicondutor"],
   },
   {
     id: 6,
-    name: "Industria de Material de Transporte",
+    name: "Indústria de Material de Transporte",
     cnae_prefixes: ["29", "30"],
-    keywords: ["veiculo", "automovel", "embarcacao", "aeronave", "locomotiva"],
+    keywords: ["veículo", "automóvel", "embarcação", "aeronave", "locomotiva"],
   },
   {
     id: 7,
-    name: "Industria de Madeira",
+    name: "Indústria de Madeira",
     cnae_prefixes: ["16"],
     keywords: ["madeira", "serraria", "compensado", "laminado"],
   },
   {
     id: 8,
-    name: "Industria de Papel e Celulose",
+    name: "Indústria de Papel e Celulose",
     cnae_prefixes: ["17"],
-    keywords: ["papel", "celulose", "papelao", "embalagem papel"],
+    keywords: ["papel", "celulose", "papelão", "embalagem papel"],
   },
   {
     id: 9,
-    name: "Industria de Borracha",
+    name: "Indústria de Borracha",
     cnae_prefixes: ["22.1"],
     keywords: ["borracha", "pneu", "artefato borracha"],
   },
   {
     id: 10,
-    name: "Industria de Couros e Peles",
+    name: "Indústria de Couros e Peles",
     cnae_prefixes: ["15.1"],
     keywords: ["couro", "curtume", "pele animal"],
   },
   {
     id: 11,
-    name: "Industria Textil, de Vestuario, Calcados e Artefatos de Tecidos",
+    name: "Indústria Têxtil, de Vestuário, Calçados e Artefatos de Tecidos",
     cnae_prefixes: ["13", "15.2", "15.3", "15.4"],
-    keywords: ["textil", "tecelagem", "fiacao", "tinturaria", "calcado"],
+    keywords: ["têxtil", "tecelagem", "fiação", "tinturaria", "calçado"],
   },
   {
     id: 12,
-    name: "Industria de Produtos de Materia Plastica",
+    name: "Indústria de Produtos de Matéria Plástica",
     cnae_prefixes: ["22.2"],
     keywords: ["plastico", "polimero", "embalagem plastica"],
   },
   {
     id: 13,
-    name: "Industria do Fumo",
+    name: "Indústria do Fumo",
     cnae_prefixes: ["12"],
     keywords: ["fumo", "tabaco", "cigarro"],
   },
   {
     id: 14,
-    name: "Industrias Diversas",
+    name: "Indústrias Diversas",
     cnae_prefixes: ["32"],
     keywords: ["joalheria", "brinquedo", "instrumento musical"],
   },
   {
     id: 15,
-    name: "Industria Quimica",
+    name: "Indústria Química",
     cnae_prefixes: ["20", "21"],
-    keywords: ["quimica", "farmaceutica", "petroquimica", "fertilizante", "agrotoxico", "tintas", "verniz", "resina", "solvente"],
+    keywords: ["quimica", "farmacêutica", "petroquímica", "fertilizante", "agrotóxico", "tintas", "verniz", "resina", "solvente"],
   },
   {
     id: 16,
-    name: "Industria de Produtos Alimentares e Bebidas",
+    name: "Indústria de Produtos Alimentares e Bebidas",
     cnae_prefixes: ["10", "11"],
-    keywords: ["alimento", "bebida", "frigorifico", "laticinio", "acucar", "alcool"],
+    keywords: ["alimento", "bebida", "frigorífico", "laticínio", "açúcar", "álcool"],
   },
   {
     id: 17,
@@ -830,12 +830,12 @@ function createOrchestration(cnpj) {
     input: { cnpj },
     steps: [
       { agent: "agent_1_cnpj_cnae", title: "Consulta CNPJ/CNAE", status: "pending", started_at: null, completed_at: null },
-      { agent: "agent_2_fte_rag_cnae", title: "Analise Profunda CNAE x FTE (RAG)", status: "pending", started_at: null, completed_at: null },
+      { agent: "agent_2_fte_rag_cnae", title: "Análise Profunda CNAE x FTE (RAG)", status: "pending", started_at: null, completed_at: null },
       { agent: "agent_3_ibama_fte", title: "Regras Federais (IBAMA/CTF/FTE)", status: "pending", started_at: null, completed_at: null },
       { agent: "agent_4_state", title: "Regras Estaduais (UF)", status: "pending", started_at: null, completed_at: null },
       { agent: "agent_5_municipal", title: "Regras Municipais", status: "pending", started_at: null, completed_at: null },
-      { agent: "agent_6_areas_contaminadas", title: "Areas Contaminadas", status: "pending", started_at: null, completed_at: null },
-      { agent: "agent_7_relatorio_ai", title: "Relatorio IA Auditavel", status: "pending", started_at: null, completed_at: null },
+      { agent: "agent_6_areas_contaminadas", title: "Áreas Contaminadas", status: "pending", started_at: null, completed_at: null },
+      { agent: "agent_7_relatorio_ai", title: "Relatório IA Auditável", status: "pending", started_at: null, completed_at: null },
     ],
     events: [],
   };
@@ -1178,7 +1178,7 @@ async function fetchCompanyByCnpj(cnpj) {
     }
   }
 
-  throw new EnvironmentalHttpError(404, "Nao foi possivel consultar o CNPJ em nenhuma fonte disponivel.");
+  throw new EnvironmentalHttpError(404, "Não foi possível consultar o CNPJ em nenhuma fonte disponível.");
 }
 
 function pickString(value) {
@@ -1492,28 +1492,28 @@ function buildFteDeterministicFallbackAnalysis(cnaes, reason) {
         risco: isPrefixMatch ? "medio" : isKeywordMatch ? "baixo" : "nao_classificado",
         probabilidade_enquadramento: isPrefixMatch ? "media" : isKeywordMatch ? "baixa" : "indefinida",
         tese_enquadramento: category
-          ? `Pre-analise deterministica indica aderencia com Cat. ${category.id} (${category.name}) do CTF/APP; confirmar FTE especifica com RAG/consulta oficial.`
-          : "Sem aderencia deterministica clara para CNAE x FTE nesta execucao.",
+          ? `Pré-análise determinística indica aderência com Cat. ${category.id} (${category.name}) do CTF/APP; confirmar FTE específica com RAG/consulta oficial.`
+          : "Sem aderência determinística clara para CNAE x FTE nesta execução.",
         obrigacoes: category
           ? [
               "Validar enquadramento na FTE especifica do IBAMA.",
-              "Confirmar obrigacao de inscricao no CTF/APP conforme atividade efetivamente exercida.",
+              "Confirmar obrigação de inscrição no CTF/APP conforme atividade efetivamente exercida.",
             ]
           : [],
         riscos_juridicos: category
           ? [
-              "Risco regulatorio por subenquadramento ou enquadramento incompleto sem validacao tecnica.",
+              "Risco regulatório por subenquadramento ou enquadramento incompleto sem validação técnica.",
             ]
           : [],
         recomendacoes_acao: category
           ? [
-              "Executar revisao tecnica CNAE x FTE com evidencias oficiais.",
-              "Registrar racional de enquadramento e anexar FTEs citadas ao dossie de compliance.",
+              "Executar revisão técnica CNAE x FTE com evidências oficiais.",
+              "Registrar racional de enquadramento e anexar FTEs citadas ao dossiê de compliance.",
             ]
-          : ["Executar analise RAG/tecnica para concluir o enquadramento com evidencias."],
+          : ["Executar análise RAG/técnica para concluir o enquadramento com evidências."],
         lacunas: [
-          `Analise RAG indisponivel nesta tentativa (${reason || "motivo nao informado"}).`,
-          "Necessaria confirmacao da FTE especifica com evidencias textuais oficiais.",
+          `Análise RAG indisponível nesta tentativa (${reason || "motivo não informado"}).`,
+          "Necessária confirmação da FTE específica com evidências textuais oficiais.",
         ],
         ftes_relacionadas: category
           ? [
@@ -1524,7 +1524,7 @@ function buildFteDeterministicFallbackAnalysis(cnaes, reason) {
                 justificativa:
                   match?.matchType === "prefix"
                     ? "Match preliminar por prefixo CNAE."
-                    : "Match preliminar por similaridade textual da descricao.",
+                    : "Match preliminar por similaridade textual da descrição.",
                 url: "https://www.gov.br/ibama/pt-br/servicos/cadastros/ctf/ctf-app/ftes/ftes-por-categorias",
               },
             ]
@@ -1543,14 +1543,14 @@ function buildFteDeterministicFallbackAnalysis(cnaes, reason) {
     reason,
     fallback_mode: "deterministic_rule_fallback",
     executive_summary:
-      "A analise profunda CNAE x FTE por RAG nao foi concluida nesta tentativa. Foi aplicada pre-analise deterministica para nao deixar lacunas no painel, exigindo validacao posterior com evidencias RAG.",
+      "A análise profunda CNAE x FTE por RAG não foi concluída nesta tentativa. Foi aplicada pré-análise determinística para não deixar lacunas no painel, exigindo validação posterior com evidências RAG.",
     findings,
     overall_recommendations: [
-      "Reexecutar o agente RAG para obter citacoes textuais das FTEs.",
-      "Validar manualmente os CNAEs com maior aderencia preliminar no portal oficial do IBAMA.",
+      "Reexecutar o agente RAG para obter citações textuais das FTEs.",
+      "Validar manualmente os CNAEs com maior aderência preliminar no portal oficial do IBAMA.",
     ],
     legal_risks: [
-      "Conclusoes desta etapa sao preliminares quando o RAG esta indisponivel.",
+      "Conclusões desta etapa são preliminares quando o RAG está indisponível.",
     ],
     stats: {
       total_findings: findings.length,
@@ -1694,31 +1694,31 @@ async function generateFteDeepCnaeAnalysis({ company }) {
   }
 
   if (!OPENAI_API_KEY) {
-    const fallbackAnalysis = buildFteDeterministicFallbackAnalysis(cnaes, "OPENAI_API_KEY nao configurada.");
+    const fallbackAnalysis = buildFteDeterministicFallbackAnalysis(cnaes, "OPENAI_API_KEY não configurada.");
     return {
       analysis: fallbackAnalysis,
       source: normalizeSourcePayload(sourceId, "unavailable", {
         latencyMs: Date.now() - start,
         statusReason: "missing_api_key",
-        message: "Configure OPENAI_API_KEY para habilitar analise CNAE x FTE com RAG. Fallback deterministico aplicado nesta execucao.",
+        message: "Configure OPENAI_API_KEY para habilitar análise CNAE x FTE com RAG. Fallback determinístico aplicado nesta execução.",
       }),
     };
   }
 
   if (!OPENAI_FTE_VECTOR_STORE_ID) {
-    const fallbackAnalysis = buildFteDeterministicFallbackAnalysis(cnaes, "OPENAI_FTE_VECTOR_STORE_ID nao configurada.");
+    const fallbackAnalysis = buildFteDeterministicFallbackAnalysis(cnaes, "OPENAI_FTE_VECTOR_STORE_ID não configurada.");
     return {
       analysis: fallbackAnalysis,
       source: normalizeSourcePayload(sourceId, "unavailable", {
         latencyMs: Date.now() - start,
         statusReason: "missing_vector_store",
-        message: "Configure OPENAI_FTE_VECTOR_STORE_ID com o Vector Store das FTEs. Fallback deterministico aplicado nesta execucao.",
+        message: "Configure OPENAI_FTE_VECTOR_STORE_ID com o Vector Store das FTEs. Fallback determinístico aplicado nesta execução.",
       }),
     };
   }
 
   if (cnaes.length === 0) {
-    const fallbackAnalysis = buildFteDeterministicFallbackAnalysis(cnaes, "Nenhum CNAE disponivel para analise.");
+    const fallbackAnalysis = buildFteDeterministicFallbackAnalysis(cnaes, "Nenhum CNAE disponível para análise.");
     return {
       analysis: fallbackAnalysis,
       source: normalizeSourcePayload(sourceId, "not_found", {
@@ -1729,10 +1729,10 @@ async function generateFteDeepCnaeAnalysis({ company }) {
   }
 
   const systemPrompt = [
-    "Voce atua como auditor ambiental e advogado regulatorio senior no Brasil.",
-    "Analise o encaixe de CADA CNAE informado nas FTEs do IBAMA usando exclusivamente evidencias recuperadas pela ferramenta file_search.",
-    "Nao invente fatos, nao invente normas e nao afirme correspondencias sem lastro nos arquivos consultados.",
-    "Priorize apontar fronteiras de enquadramento: o que entra, o que nao entra, linhas de corte, obrigacoes e riscos juridicos.",
+    "Você atua como auditor ambiental e advogado regulatório sênior no Brasil.",
+    "Analise o encaixe de CADA CNAE informado nas FTEs do IBAMA usando exclusivamente evidências recuperadas pela ferramenta file_search.",
+    "Não invente fatos, não invente normas e não afirme correspondências sem lastro nos arquivos consultados.",
+    "Priorize apontar fronteiras de enquadramento: o que entra, o que não entra, linhas de corte, obrigações e riscos jurídicos.",
     "Responda OBRIGATORIAMENTE em JSON valido (sem markdown) com a estrutura:",
     "{",
     '  "executive_summary": "string",',
@@ -1763,11 +1763,11 @@ async function generateFteDeepCnaeAnalysis({ company }) {
     '  "overall_recommendations": ["string"],',
     '  "legal_risks": ["string"]',
     "}",
-    "Seja objetivo: no maximo 2 itens por lista (obrigacoes, riscos_juridicos, recomendacoes_acao, lacunas) e no maximo 220 caracteres por campo textual longo.",
-    "Se nao houver evidencia suficiente para um CNAE, preencha lacunas explicitamente e use risco 'nao_classificado'.",
+    "Seja objetivo: no máximo 2 itens por lista (obrigacoes, riscos_juridicos, recomendacoes_acao, lacunas) e no máximo 220 caracteres por campo textual longo.",
+    "Se não houver evidência suficiente para um CNAE, preencha lacunas explicitamente e use risco 'nao_classificado'.",
   ].join("\n");
 
-  const userPrompt = `Empresa alvo para analise CNAE x FTE:\n\n${JSON.stringify(
+  const userPrompt = `Empresa alvo para análise CNAE x FTE:\n\n${JSON.stringify(
     {
       cnpj: company?.cnpj ?? null,
       razao_social: company?.razao_social ?? null,
@@ -1830,8 +1830,8 @@ async function generateFteDeepCnaeAnalysis({ company }) {
         latencyMs: Date.now() - start,
         statusReason: retryUsed ? "timeout_or_network_after_retry" : "timeout_or_network",
         message: retryUsed
-          ? "OpenAI nao respondeu apos tentativa principal e retry; fallback deterministico aplicado."
-          : "OpenAI nao respondeu no timeout configurado; fallback deterministico aplicado.",
+          ? "OpenAI não respondeu após tentativa principal e retry; fallback determinístico aplicado."
+          : "OpenAI não respondeu no timeout configurado; fallback determinístico aplicado.",
       }),
     };
   }
@@ -1849,8 +1849,8 @@ async function generateFteDeepCnaeAnalysis({ company }) {
         latencyMs: Date.now() - start,
         statusReason: `http_${response.status}`,
         message: errorDetail
-          ? `OpenAI retornou ${response.status}: ${errorDetail}. Fallback deterministico aplicado.`
-          : `OpenAI retornou ${response.status}. Fallback deterministico aplicado.`,
+          ? `OpenAI retornou ${response.status}: ${errorDetail}. Fallback determinístico aplicado.`
+          : `OpenAI retornou ${response.status}. Fallback determinístico aplicado.`,
       }),
     };
   }
@@ -1858,13 +1858,13 @@ async function generateFteDeepCnaeAnalysis({ company }) {
   const payload = await parseJsonResponse(response);
   const outputText = extractOpenAiResponseText(payload);
   if (!outputText) {
-    const fallbackAnalysis = buildFteDeterministicFallbackAnalysis(cnaes, "Resposta da OpenAI sem conteudo textual.");
+    const fallbackAnalysis = buildFteDeterministicFallbackAnalysis(cnaes, "Resposta da OpenAI sem conteúdo textual.");
     return {
       analysis: fallbackAnalysis,
       source: normalizeSourcePayload(sourceId, "error", {
         latencyMs: Date.now() - start,
         statusReason: "invalid_payload",
-        message: "OpenAI respondeu sem texto util; fallback deterministico aplicado.",
+        message: "OpenAI respondeu sem texto útil; fallback determinístico aplicado.",
       }),
     };
   }
@@ -1893,15 +1893,15 @@ async function generateFteDeepCnaeAnalysis({ company }) {
         ...(Number.isFinite(outputTokens) ? { output_tokens: outputTokens } : {}),
         generated_at: new Date().toISOString(),
         parse_warning: tokenCapReached
-          ? "IA atingiu limite de tokens e retornou JSON truncado; fallback deterministico aplicado."
-          : "IA retornou payload nao parseavel; fallback deterministico aplicado.",
+          ? "IA atingiu limite de tokens e retornou JSON truncado; fallback determinístico aplicado."
+          : "IA retornou payload não parseável; fallback determinístico aplicado.",
       },
       source: normalizeSourcePayload(sourceId, "error", {
         latencyMs: Date.now() - start,
         statusReason: tokenCapReached ? "output_truncated" : "invalid_payload",
         message: tokenCapReached
-          ? "OpenAI retornou JSON truncado por limite de tokens; fallback deterministico aplicado."
-          : "OpenAI retornou conteudo nao estruturado; fallback deterministico aplicado.",
+          ? "OpenAI retornou JSON truncado por limite de tokens; fallback determinístico aplicado."
+          : "OpenAI retornou conteúdo não estruturado; fallback determinístico aplicado.",
         evidenceCount: Math.max(citations.length, Number(fallbackAnalysis?.stats?.total_findings ?? 0), 1),
       }),
     };
@@ -1916,7 +1916,7 @@ async function generateFteDeepCnaeAnalysis({ company }) {
     ...(Number.isFinite(inputTokens) ? { input_tokens: inputTokens } : {}),
     ...(Number.isFinite(outputTokens) ? { output_tokens: outputTokens } : {}),
     generated_at: new Date().toISOString(),
-    ...(parsedObject ? {} : { parse_warning: "IA retornou texto nao estruturado; aplicado fallback parcial." }),
+    ...(parsedObject ? {} : { parse_warning: "IA retornou texto não estruturado; aplicado fallback parcial." }),
   };
 
   return {
@@ -1957,7 +1957,7 @@ function agentIBAMA(cnaes) {
         link_fte: "https://www.gov.br/ibama/pt-br/servicos/cadastros/ctf/ctf-app/ftes/ftes-por-categorias",
         link_tabela:
           "https://www.ibama.gov.br/phocadownload/qualidadeambiental/relatorios/2009/2019-03-06-Ibama-Tabela-FTE%20-completa.pdf",
-        obrigacao: "Inscricao no CTF/APP obrigatoria. Verificar FTE especifica para confirmar enquadramento.",
+        obrigacao: "Inscrição no CTF/APP obrigatória. Verificar FTE específica para confirmar enquadramento.",
         risco: "alto",
       });
     }
@@ -1981,7 +1981,7 @@ function agentIBAMA(cnaes) {
         link_fte: "https://www.gov.br/ibama/pt-br/servicos/cadastros/ctf/ctf-app/ftes/ftes-por-categorias",
         link_tabela:
           "https://www.ibama.gov.br/phocadownload/qualidadeambiental/relatorios/2009/2019-03-06-Ibama-Tabela-FTE%20-completa.pdf",
-        obrigacao: "Possivel enquadramento por descricao. Consultar FTE para confirmacao.",
+        obrigacao: "Possível enquadramento por descrição. Consultar FTE para confirmação.",
         risco: "medio",
       });
     }
@@ -1990,7 +1990,7 @@ function agentIBAMA(cnaes) {
   return {
     enquadrado: results.length > 0,
     matches: results,
-    nota: "A CNAE e referencia, nao determinante. O enquadramento final depende da analise da FTE especifica (IN Ibama no 13/2021).",
+    nota: "A CNAE é referência, não determinante. O enquadramento final depende da análise da FTE específica (IN Ibama nº 13/2021).",
     link_consulta: "https://www.gov.br/ibama/pt-br/servicos/cadastros/ctf/ctf-app/ftes/enquadramento-passo-a-passo",
   };
 }
@@ -2007,10 +2007,10 @@ function agentCETESB(cnaes) {
     results.push({
       cnae: cnae.codigo,
       descricao: cnae.descricao,
-      tipo: "Anexo 5 - Fonte de Poluicao",
-      obrigacao: "Licenciamento Ambiental obrigatorio (LP, LI, LO) conforme Art. 58 do Regulamento da Lei 997/76",
+      tipo: "Anexo 5 - Fonte de Poluição",
+      obrigacao: "Licenciamento Ambiental obrigatório (LP, LI, LO) conforme Art. 58 do Regulamento da Lei 997/76",
       risco: "alto",
-      legislacao: ["Lei Estadual no 997/76", "Decreto no 8.468/76", "Decreto no 47.397/02"],
+      legislacao: ["Lei Estadual nº 997/76", "Decreto nº 8.468/76", "Decreto nº 47.397/02"],
     });
   }
 
@@ -2027,7 +2027,7 @@ function agentCETESB(cnaes) {
     rmsp_restricoes: rmspIssues.length > 0,
     nota_rmsp:
       rmspIssues.length > 0
-        ? "Atencao: Algumas atividades podem ter restricoes na RMSP (Lei Estadual no 1.817/78) e em areas de drenagem do Rio Piracicaba (Lei 9.825/97)."
+        ? "Atenção: Algumas atividades podem ter restrições na RMSP (Lei Estadual nº 1.817/78) e em áreas de drenagem do Rio Piracicaba (Lei 9.825/97)."
         : null,
     links: {
       atividades: "https://licenciamento.cetesb.sp.gov.br/cetesb/atividades_empreendimentos.asp",
@@ -2049,18 +2049,18 @@ function agentMunicipal(cnaes) {
       results.push({
         cnae: cnae.codigo,
         descricao: cnae.descricao,
-        enquadramento: "Deliberacao CONSEMA 01/2024 - Impacto Local",
-        competencia: "Municipal (se municipio habilitado) ou CETESB",
+        enquadramento: "Deliberação CONSEMA 01/2024 - Impacto Local",
+        competencia: "Municipal (se município habilitado) ou CETESB",
         risco: "medio",
       });
       continue;
     }
 
     const nonIndustrial = [
-      { pattern: /^41|^42|^43/, desc: "Construcao civil / obras" },
-      { pattern: /^55|^56/, desc: "Alojamento e alimentacao" },
-      { pattern: /^86|^87|^88/, desc: "Saude" },
-      { pattern: /^47/, desc: "Comercio varejista" },
+      { pattern: /^41|^42|^43/, desc: "Construção civil / obras" },
+      { pattern: /^55|^56/, desc: "Alojamento e alimentação" },
+      { pattern: /^86|^87|^88/, desc: "Saúde" },
+      { pattern: /^47/, desc: "Comércio varejista" },
       { pattern: /^49|^50|^51|^52/, desc: "Transporte e armazenamento" },
     ];
 
@@ -2070,7 +2070,7 @@ function agentMunicipal(cnaes) {
     results.push({
       cnae: cnae.codigo,
       descricao: cnae.descricao || match.desc,
-      enquadramento: "Verificar Anexo I, item I da DN CONSEMA 01/2024 (atividades nao industriais)",
+      enquadramento: "Verificar Anexo I, item I da DN CONSEMA 01/2024 (atividades não industriais)",
       competencia: "Municipal (conforme porte e impacto)",
       risco: "baixo",
     });
@@ -2084,7 +2084,7 @@ function agentMunicipal(cnaes) {
       consema: "https://smastr16.blob.core.windows.net/home/2024/03/Deliberacao-Normativa-CONSEMA-01_2024-assinada.pdf",
       municipios_habilitados: "https://semil.sp.gov.br/consema/licenciamento-ambiental-municipal/",
     },
-    nota: "A competencia depende da habilitacao do municipio junto ao CONSEMA. Se nao habilitado, a CETESB assume o licenciamento.",
+    nota: "A competência depende da habilitação do município junto ao CONSEMA. Se não habilitado, a CETESB assume o licenciamento.",
   };
 }
 
@@ -2128,10 +2128,10 @@ function agentStateNational(cnaes, uf) {
       },
     },
     obligations: [
-      "Executar checklist assistido junto ao orgao ambiental estadual competente.",
+      "Executar checklist assistido junto ao órgão ambiental estadual competente.",
       "Validar tipologia da atividade e rito de licenciamento na norma estadual vigente.",
     ],
-    nota: "UF sem conector estadual estruturado nesta versao. Fluxo assistido com evidencias e trilha de auditoria.",
+    nota: "UF sem conector estadual estruturado nesta versão. Fluxo assistido com evidências e trilha de auditoria.",
   };
 }
 
@@ -2173,13 +2173,13 @@ function agentMunicipalNational(cnaes, uf, municipioNome) {
         municipios_habilitados: "",
       },
       nota:
-        "Municipio sem conector estruturado nesta versao. Consulta assistida em portal oficial local.",
+        "Município sem conector estruturado nesta versão. Consulta assistida em portal oficial local.",
     },
     obligations: [
-      "Confirmar competencia do ente licenciador (municipal x estadual).",
-      "Mapear requisitos locais de LP/LI/LO e condicionantes urbanistico-ambientais.",
+      "Confirmar competência do ente licenciador (municipal x estadual).",
+      "Mapear requisitos locais de LP/LI/LO e condicionantes urbanístico-ambientais.",
     ],
-    nota: "Fluxo municipal assistido por checklist com trilha auditavel.",
+    nota: "Fluxo municipal assistido por checklist com trilha auditável.",
   };
 }
 
@@ -2294,12 +2294,12 @@ async function agentAreasContaminadasNational(company, uf) {
         available: false,
         method: "manual_required",
         status: "manual_required",
-        summary: "Consulta automatica de areas contaminadas nao disponivel para esta UF nesta versao.",
+        summary: "Consulta automática de áreas contaminadas não disponível para esta UF nesta versão.",
         matches: [],
         evidence_refs: [],
         limitations: [
-          "Conector geoespacial oficial ainda nao integrado para esta UF.",
-          "Executar diligencia assistida em portais oficiais estaduais/municipais.",
+          "Conector geoespacial oficial ainda não integrado para esta UF.",
+          "Executar diligência assistida em portais oficiais estaduais/municipais.",
         ],
         ...commonPayload,
       },
@@ -2312,7 +2312,7 @@ async function agentAreasContaminadasNational(company, uf) {
   }
 
   const sourceId = "sp_semil_areas_contaminadas_api";
-  const sourceConfig = resolveSourceConfig(sourceId, "SEMIL/CETESB - Areas Contaminadas (SP)", 15000);
+  const sourceConfig = resolveSourceConfig(sourceId, "SEMIL/CETESB - Áreas Contaminadas (SP)", 15000);
   const start = Date.now();
   const targetCep = normalizeCep(company?.cep);
   const normalizedRazao = normalizeText(company?.razao_social);
@@ -2334,8 +2334,8 @@ async function agentAreasContaminadasNational(company, uf) {
   ].join(",");
 
   const layerNames = {
-    1: "Areas Contaminadas e Reabilitadas - Geral (Pontos)",
-    2: "Areas Contaminadas e Reabilitadas - Geral (Poligonos)",
+    1: "Áreas Contaminadas e Reabilitadas - Geral (Pontos)",
+    2: "Áreas Contaminadas e Reabilitadas - Geral (Poligonos)",
   };
 
   const collected = [];
@@ -2474,7 +2474,7 @@ async function agentAreasContaminadasNational(company, uf) {
     ...(hadSuccess
       ? {}
       : {
-          message: "Nao foi possivel concluir consulta automatica nas camadas SEMIL/CETESB nesta execucao.",
+          message: "Não foi possível concluir consulta automática nas camadas SEMIL/CETESB nesta execução.",
         }),
   });
 
@@ -2485,14 +2485,14 @@ async function agentAreasContaminadasNational(company, uf) {
       status: hadSuccess ? (matches.length > 0 ? "match_found" : "not_found") : "manual_required",
       summary: hadSuccess
         ? matches.length > 0
-          ? `${matches.length} match(es) identificado(s) na base oficial de areas contaminadas de SP.`
-          : "Nenhum match encontrado na base oficial de areas contaminadas de SP."
-        : "Consulta automatica indisponivel nesta execucao; seguir com diligencia manual assistida.",
+          ? `${matches.length} match(es) identificado(s) na base oficial de áreas contaminadas de SP.`
+          : "Nenhum match encontrado na base oficial de áreas contaminadas de SP."
+        : "Consulta automática indisponível nesta execução; seguir com diligência manual assistida.",
       matches,
       evidence_refs: matches.map((item) => item.match_id),
       limitations: [
-        "Matching por texto e endereco pode gerar falsos positivos/negativos em nomes similares.",
-        "A decisao final deve considerar validacao tecnica-juridica e consulta visual no mapa oficial.",
+        "Matching por texto e endereço pode gerar falsos positivos/negativos em nomes similares.",
+        "A decisão final deve considerar validação técnica-jurídica e consulta visual no mapa oficial.",
       ],
       ...buildSemilMapUrls(company, matches[0] ?? null),
     },
@@ -2611,7 +2611,7 @@ async function generateEnvironmentalAiReport({
   sources,
 }) {
   const sourceId = "openai_relatorio_ambiental";
-  const sourceConfig = resolveSourceConfig(sourceId, "OpenAI - Relatorio Ambiental", 45000);
+  const sourceConfig = resolveSourceConfig(sourceId, "OpenAI - Relatório Ambiental", 45000);
   const start = Date.now();
 
   if (!sourceConfig.enabled) {
@@ -2631,34 +2631,34 @@ async function generateEnvironmentalAiReport({
     return {
       analysis: {
         available: false,
-        reason: "OPENAI_API_KEY nao configurada.",
+        reason: "OPENAI_API_KEY não configurada.",
       },
       source: normalizeSourcePayload(sourceId, "unavailable", {
         latencyMs: Date.now() - start,
         statusReason: "missing_api_key",
-        message: "Configure OPENAI_API_KEY para habilitar o ultimo agente (relatorio IA).",
+        message: "Configure OPENAI_API_KEY para habilitar o último agente (relatório IA).",
       }),
     };
   }
 
   const systemPrompt = [
-    "Voce e um especialista senior em compliance ambiental no Brasil.",
-    "Produza um relatorio executivo em portugues do Brasil, sem inventar fatos.",
+    "Você é um especialista sênior em compliance ambiental no Brasil.",
+    "Produza um relatório executivo em português do Brasil, sem inventar fatos.",
     "Use SOMENTE os dados fornecidos.",
-    "Estruture obrigatoriamente com as secoes:",
+    "Estruture obrigatoriamente com as seções:",
     "1) Resumo Executivo",
     "2) Perfil e CNAEs",
     "3) Achados Profundos CNAE x FTE (RAG)",
-    "4) Achados Regulatorios (Federal, Estadual, Municipal e Territorial)",
-    "5) Contratacoes Publicas (gov.br)",
-    "6) Plano de Acao Prioritario (30-60-90 dias)",
-    "7) Checklist de Evidencias para Auditoria",
-    "8) Disclaimer Tecnico",
+    "4) Achados Regulatórios (Federal, Estadual, Municipal e Territorial)",
+    "5) Contratações Públicas (gov.br)",
+    "6) Plano de Ação Prioritário (30-60-90 dias)",
+    "7) Checklist de Evidências para Auditoria",
+    "8) Disclaimer Técnico",
     "Se houver incerteza, explicite.",
-    "Use linguagem objetiva e acionavel.",
+    "Use linguagem objetiva e acionável.",
   ].join("\n");
 
-  const userPrompt = `Dados estruturados da analise ambiental:\n\n${JSON.stringify(
+  const userPrompt = `Dados estruturados da análise ambiental:\n\n${JSON.stringify(
     buildEnvironmentalAiPromptInput({
       company,
       jurisdictionContext,
@@ -2729,7 +2729,7 @@ async function generateEnvironmentalAiReport({
     return {
       analysis: {
         available: false,
-        reason: "Resposta da OpenAI sem conteudo textual.",
+        reason: "Resposta da OpenAI sem conteúdo textual.",
       },
       source: normalizeSourcePayload(sourceId, "error", {
         latencyMs: Date.now() - start,
@@ -2760,12 +2760,12 @@ async function generateEnvironmentalAiReport({
 
 function buildDisclaimers() {
   return [
-    "Correspondencia CNAE x obrigacao ambiental e indicativa, nao vinculante.",
-    "Enquadramento definitivo requer analise tecnica especializada e consulta das FTEs oficiais.",
-    "Cobertura nacional opera por maturidade de fontes: conectores automaticos coexistem com trilhas manuais auditaveis.",
-    "Analise profunda CNAE x FTE depende do acervo RAG carregado no OpenAI Vector Store.",
-    "Areas contaminadas usam evidencias estruturadas quando ha API oficial; nos demais cenarios, fluxo manual assistido.",
-    "Relatorio de IA tem carater de apoio e nao substitui parecer tecnico-juridico especializado.",
+    "Correspondência CNAE x obrigação ambiental é indicativa, não vinculante.",
+    "Enquadramento definitivo requer análise técnica especializada e consulta das FTEs oficiais.",
+    "Cobertura nacional opera por maturidade de fontes: conectores automáticos coexistem com trilhas manuais auditáveis.",
+    "Análise profunda CNAE x FTE depende do acervo RAG carregado no OpenAI Vector Store.",
+    "Áreas contaminadas usam evidências estruturadas quando há API oficial; nos demais cenários, fluxo manual assistido.",
+    "Relatório de IA tem caráter de apoio e não substitui parecer técnico-jurídico especializado.",
   ];
 }
 
@@ -2794,7 +2794,7 @@ function buildExecutiveTopRisks({ fteDeepAnalysis, ibama, state, municipal, area
         sphere: "federal",
         severity: item?.risco ?? "baixo",
         title: `CNAE ${item?.cnae_codigo ?? "-"} x FTE`,
-        detail: item?.tese_enquadramento || "Possivel enquadramento com necessidade de validacao tecnica.",
+        detail: item?.tese_enquadramento || "Possível enquadramento com necessidade de validação técnica.",
       }))
     : [];
   const ibamaRisks = Array.isArray(ibama?.matches)
@@ -2810,7 +2810,7 @@ function buildExecutiveTopRisks({ fteDeepAnalysis, ibama, state, municipal, area
         sphere: "estadual",
         severity: item?.risco ?? "medio",
         title: `Licenciamento estadual CNAE ${item?.cnae ?? "-"}`,
-        detail: item?.obrigacao || item?.descricao || "Obrigacao estadual potencial.",
+        detail: item?.obrigacao || item?.descricao || "Obrigação estadual potencial.",
       }))
     : [];
   const municipalRisks = Array.isArray(municipal?.details?.matches)
@@ -2818,14 +2818,14 @@ function buildExecutiveTopRisks({ fteDeepAnalysis, ibama, state, municipal, area
         sphere: "municipal",
         severity: item?.risco ?? "medio",
         title: `Competencia municipal CNAE ${item?.cnae ?? "-"}`,
-        detail: item?.enquadramento || item?.descricao || "Obrigacao municipal potencial.",
+        detail: item?.enquadramento || item?.descricao || "Obrigação municipal potencial.",
       }))
     : [];
   const areasRisks = Array.isArray(areasContaminadas?.matches)
     ? areasContaminadas.matches.map((item) => ({
         sphere: "ambiental_territorial",
         severity: item?.risco ?? "medio",
-        title: `Area contaminada (${item?.layer_name ?? "camada"})`,
+        title: `Área contaminada (${item?.layer_name ?? "camada"})`,
         detail: `Match ${item?.match_id ?? "-"} com score ${Number(item?.score ?? 0).toFixed(2)}.`,
       }))
     : [];
@@ -2842,10 +2842,10 @@ function buildExecutiveCoverageGaps({ coverage, fteDeepAnalysis, areasContaminad
   const gaps = [];
   if (coverage?.federal?.status !== "api_ready") gaps.push("Cobertura federal parcial/manual.");
   if (coverage?.state?.status !== "api_ready") gaps.push("Cobertura estadual em modo manual_required para a UF.");
-  if (coverage?.municipal?.status !== "api_ready") gaps.push("Cobertura municipal em modo manual_required para o municipio.");
+  if (coverage?.municipal?.status !== "api_ready") gaps.push("Cobertura municipal em modo manual_required para o município.");
   if (coverage?.ambiental_territorial?.status !== "api_ready") gaps.push("Cobertura territorial parcial/manual.");
-  if (!fteDeepAnalysis?.available) gaps.push(`RAG/FTE em fallback: ${fteDeepAnalysis?.reason || "indisponivel"}.`);
-  if (areasContaminadas?.method !== "api_match") gaps.push("Areas contaminadas exigem diligencia manual assistida.");
+  if (!fteDeepAnalysis?.available) gaps.push(`RAG/FTE em fallback: ${fteDeepAnalysis?.reason || "indisponível"}.`);
+  if (areasContaminadas?.method !== "api_match") gaps.push("Áreas contaminadas exigem diligência manual assistida.");
   return normalizeStringArray(gaps).slice(0, 6);
 }
 
@@ -2861,11 +2861,11 @@ function buildCriticalObligations({ federal, state, municipal, ibama }) {
 
 function buildFallbackFlags({ fteDeepAnalysis, state, municipal, areasContaminadas, aiReport }) {
   const flags = [];
-  if (!fteDeepAnalysis?.available) flags.push(`rag_fallback:${fteDeepAnalysis?.reason || "indisponivel"}`);
+  if (!fteDeepAnalysis?.available) flags.push(`rag_fallback:${fteDeepAnalysis?.reason || "indisponível"}`);
   if (state?.mode !== "api_ready") flags.push(`state_manual:${state?.uf || "N/A"}`);
   if (municipal?.mode !== "api_ready") flags.push(`municipal_manual:${municipal?.municipio_nome || "N/A"}`);
   if (areasContaminadas?.method !== "api_match") flags.push(`territorial_manual:${areasContaminadas?.status || "manual_required"}`);
-  if (!aiReport?.available) flags.push(`ai_report_partial:${aiReport?.reason || "indisponivel"}`);
+  if (!aiReport?.available) flags.push(`ai_report_partial:${aiReport?.reason || "indisponível"}`);
   return flags;
 }
 
@@ -2885,6 +2885,9 @@ function buildEvidenceIndex(evidence) {
   };
 }
 
+/**
+ * Política de confiança: sucesso da fonte → alta; erro, parcial ou manual_required → baixa.
+ */
 function buildConfidenceMap(evidence) {
   const map = { alta: 0, media: 0, baixa: 0 };
   for (const item of Array.isArray(evidence) ? evidence : []) {
@@ -2915,7 +2918,7 @@ function buildActionPlan({ summary, federal, state, municipal, fteDeepAnalysis, 
   const topObligation = Array.isArray(federal?.obligations) && federal.obligations.length > 0 ? federal.obligations[0] : null;
   if (topObligation) {
     pushItem({
-      title: `Validar e cumprir obrigacao federal critica: ${topObligation}`,
+      title: `Validar e cumprir obrigação federal crítica: ${topObligation}`,
       priority: summary?.risk_level === "alto" ? "alta" : "media",
       source_refs: ["federal.ibama.ctf_app.base"],
     });
@@ -2939,13 +2942,13 @@ function buildActionPlan({ summary, federal, state, municipal, fteDeepAnalysis, 
 
   if (areasContaminadas?.method === "api_match" && Array.isArray(areasContaminadas?.matches) && areasContaminadas.matches.length > 0) {
     pushItem({
-      title: "Executar diligencia territorial imediata para os matches de areas contaminadas.",
+      title: "Executar diligência territorial imediata para os matches de áreas contaminadas.",
       priority: "alta",
       source_refs: [...(areasContaminadas.evidence_refs || []), "territorial.sp.areas_contaminadas"],
     });
   } else if (areasContaminadas?.method !== "api_match") {
     pushItem({
-      title: "Completar diligencia manual de areas contaminadas no mapa oficial e anexar evidencias.",
+      title: "Completar diligência manual de áreas contaminadas no mapa oficial e anexar evidências.",
       priority: "media",
       source_refs: ["territorial.default.manual"],
     });
@@ -2961,7 +2964,7 @@ function buildActionPlan({ summary, federal, state, municipal, fteDeepAnalysis, 
 
   if (!aiReport?.available) {
     pushItem({
-      title: "Regerar relatorio IA auditavel apos estabilizar conectores/fallbacks.",
+      title: "Regerar relatório IA auditável após estabilizar conectores/fallbacks.",
       priority: "baixa",
       source_refs: ["openai_relatorio_ambiental"],
     });
@@ -2969,7 +2972,7 @@ function buildActionPlan({ summary, federal, state, municipal, fteDeepAnalysis, 
 
   if (coverage?.state?.status !== "api_ready" || coverage?.municipal?.status !== "api_ready") {
     pushItem({
-      title: "Executar checklist de diligencia manual para lacunas estaduais/municipais.",
+      title: "Executar checklist de diligência manual para lacunas estaduais/municipais.",
       priority: "media",
       source_refs: ["state.default.manual", "municipal.default.manual"],
     });
@@ -3015,7 +3018,7 @@ function buildUxV2({ summary, federal, state, municipal, coverage, fteDeepAnalys
 export async function analyzeEnvironmentalCompliance(cnpj) {
   const cleanCnpj = normalizeCnpj(cnpj);
   if (cleanCnpj.length !== 14) {
-    throw new EnvironmentalHttpError(400, "CNPJ invalido. Deve conter 14 digitos.");
+    throw new EnvironmentalHttpError(400, "CNPJ inválido. Deve conter 14 dígitos.");
   }
 
   const orchestration = createOrchestration(cleanCnpj);
@@ -3078,11 +3081,11 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
           source: govbrResult.source,
           jurisdiction: "federal",
           status: govbrResult.source.status === "success" ? "success" : "partial",
-          confidence: govbrResult.source.status === "success" ? "media" : "baixa",
+          confidence: govbrResult.source.status === "success" ? "alta" : "baixa",
           summary:
             govbrResult.source.status === "success"
               ? `Contexto gov.br coletado com ${Number(govbrResult.context?.found_records ?? 0)} registro(s).`
-              : `Contexto gov.br indisponivel/parcial (${govbrResult.source.status_reason || "sem motivo"}).`,
+              : `Contexto gov.br indisponível/parcial (${govbrResult.source.status_reason || "sem motivo"}).`,
           input: { cnpj: cleanCnpj },
           output: govbrResult.context,
         })
@@ -3112,7 +3115,7 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
   }
 
   updateOrchestrationStep(orchestration, "agent_2_fte_rag_cnae", "running", {
-    message: "Executando analise aprofundada CNAE x FTE com RAG.",
+    message: "Executando análise aprofundada CNAE x FTE com RAG.",
   });
   const fteResult = await generateFteDeepCnaeAnalysis({ company });
   fteDeepAnalysis = fteResult.analysis;
@@ -3123,10 +3126,10 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
       source: fteResult.source,
       jurisdiction: "federal",
       status: fteResult.source.status === "success" ? "success" : "partial",
-      confidence: fteResult.source.status === "success" ? "media" : "baixa",
+      confidence: fteResult.source.status === "success" ? "alta" : "baixa",
       summary: fteDeepAnalysis?.available
-        ? `Analise RAG concluida para ${Number(fteDeepAnalysis?.stats?.total_findings ?? 0)} CNAE(s).`
-        : `Analise RAG indisponivel (${fteDeepAnalysis?.reason ?? "motivo nao informado"}).`,
+        ? `Análise RAG concluída para ${Number(fteDeepAnalysis?.stats?.total_findings ?? 0)} CNAE(s).`
+        : `Análise RAG indisponível (${fteDeepAnalysis?.reason ?? "motivo não informado"}).`,
       input: {
         cnpj: cleanCnpj,
         cnaes: company.cnaes,
@@ -3136,8 +3139,8 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
   );
   updateOrchestrationStep(orchestration, "agent_2_fte_rag_cnae", "completed", {
     message: fteDeepAnalysis?.available
-      ? `Analise profunda concluida para ${fteDeepAnalysis?.stats?.total_findings ?? company.cnaes.length} CNAE(s).`
-      : `Analise profunda indisponivel: ${fteDeepAnalysis?.reason ?? "motivo nao informado"}`,
+      ? `Análise profunda concluída para ${fteDeepAnalysis?.stats?.total_findings ?? company.cnaes.length} CNAE(s).`
+      : `Análise profunda indisponível: ${fteDeepAnalysis?.reason ?? "motivo não informado"}`,
     summary: {
       available: Boolean(fteDeepAnalysis?.available),
       findings: Number(fteDeepAnalysis?.stats?.total_findings ?? 0),
@@ -3168,7 +3171,7 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
       jurisdiction: "federal",
       ruleId: "federal.ibama.ctf_app.base",
       status: ibama.enquadrado ? "success" : "not_found",
-      confidence: ibama.enquadrado ? "media" : "alta",
+      confidence: "alta",
       summary: ibama.enquadrado
         ? `${ibama.matches.length} enquadramento(s) federal(is) identificado(s).`
         : "Nenhum enquadramento federal direto identificado por regra CNAE/FTE.",
@@ -3193,7 +3196,7 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
     ]),
   };
   updateOrchestrationStep(orchestration, "agent_3_ibama_fte", "completed", {
-    message: `${ibama.matches.length} possivel(is) enquadramento(s) no IBAMA.`,
+    message: `${ibama.matches.length} possível(is) enquadramento(s) no IBAMA.`,
     summary: {
       enquadrado: ibama.enquadrado,
       matches: ibama.matches.length,
@@ -3201,7 +3204,7 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
   });
 
   updateOrchestrationStep(orchestration, "agent_4_state", "running", {
-    message: "Aplicando regras estaduais dinamicas conforme UF.",
+    message: "Aplicando regras estaduais dinâmicas conforme UF.",
   });
   state = agentStateNational(company.cnaes, jurisdictionContext?.uf);
   const stateMatches = extractStateMatches(state);
@@ -3215,7 +3218,7 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
       ...(state?.mode === "api_ready"
         ? {}
         : {
-            message: "Conector estadual automatico indisponivel para a UF nesta versao.",
+            message: "Conector estadual automático indisponível para a UF nesta versão.",
           }),
     }
   );
@@ -3227,8 +3230,8 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
       jurisdiction: `estadual:${jurisdictionContext?.uf ?? "N/A"}`,
       ruleId: state?.mode === "api_ready" ? "state.sp.cetesb.anexo5" : "state.default.manual",
       status: state?.mode === "api_ready" ? "success" : "manual_required",
-      confidence: state?.mode === "api_ready" ? "media" : "baixa",
-      summary: state?.nota ?? "Analise estadual concluida.",
+      confidence: state?.mode === "api_ready" ? "alta" : "baixa",
+      summary: state?.nota ?? "Análise estadual concluída.",
       input: { cnaes: company.cnaes, uf: jurisdictionContext?.uf ?? null },
       output: state,
     })
@@ -3246,7 +3249,7 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
   });
 
   updateOrchestrationStep(orchestration, "agent_5_municipal", "running", {
-    message: "Aplicando regras municipais dinamicas por municipio.",
+    message: "Aplicando regras municipais dinâmicas por município.",
   });
   municipal = agentMunicipalNational(company.cnaes, jurisdictionContext?.uf, jurisdictionContext?.municipio_nome);
   const municipalMatches = extractMunicipalMatches(municipal);
@@ -3260,7 +3263,7 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
       ...(municipal?.mode === "api_ready"
         ? {}
         : {
-            message: "Conector municipal automatico indisponivel para o municipio nesta versao.",
+            message: "Conector municipal automático indisponível para o município nesta versão.",
           }),
     }
   );
@@ -3272,8 +3275,8 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
       jurisdiction: `municipal:${jurisdictionContext?.municipio_nome ?? "N/A"}`,
       ruleId: municipal?.mode === "api_ready" ? "municipal.sp.consema_012024" : "municipal.default.manual",
       status: municipal?.mode === "api_ready" ? "success" : "manual_required",
-      confidence: municipal?.mode === "api_ready" ? "media" : "baixa",
-      summary: municipal?.nota ?? "Analise municipal concluida.",
+      confidence: municipal?.mode === "api_ready" ? "alta" : "baixa",
+      summary: municipal?.nota ?? "Análise municipal concluída.",
       input: {
         cnaes: company.cnaes,
         uf: jurisdictionContext?.uf ?? null,
@@ -3295,7 +3298,7 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
   });
 
   updateOrchestrationStep(orchestration, "agent_6_areas_contaminadas", "running", {
-    message: "Executando motor de areas contaminadas (api_match/manual).",
+    message: "Executando motor de áreas contaminadas (api_match/manual).",
   });
   const areasResult = await agentAreasContaminadasNational(company, jurisdictionContext?.uf);
   areasContaminadas = areasResult.result;
@@ -3310,8 +3313,8 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
           ? "territorial.sp.areas_contaminadas"
           : "territorial.default.manual",
       status: areasResult.source?.status === "success" ? "success" : "manual_required",
-      confidence: areasResult.source?.status === "success" ? "media" : "baixa",
-      summary: areasContaminadas?.summary ?? "Analise territorial concluida.",
+      confidence: areasResult.source?.status === "success" ? "alta" : "baixa",
+      summary: areasContaminadas?.summary ?? "Análise territorial concluída.",
       input: {
         cnpj: cleanCnpj,
         endereco: company?.endereco ?? null,
@@ -3361,7 +3364,7 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
   };
 
   updateOrchestrationStep(orchestration, "agent_7_relatorio_ai", "running", {
-    message: "Gerando relatorio de IA auditavel a partir das evidencias coletadas.",
+    message: "Gerando relatório de IA auditável a partir das evidências coletadas.",
   });
   const aiResult = await generateEnvironmentalAiReport({
     company,
@@ -3385,10 +3388,10 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
       source: aiResult.source,
       jurisdiction: "federal",
       status: aiResult.source.status === "success" ? "success" : "partial",
-      confidence: aiResult.source.status === "success" ? "media" : "baixa",
+      confidence: aiResult.source.status === "success" ? "alta" : "baixa",
       summary: aiReport?.available
-        ? "Relatorio IA consolidado com base em evidencias estruturadas."
-        : `Relatorio IA indisponivel (${aiReport?.reason ?? "motivo nao informado"}).`,
+        ? "Relatório IA consolidado com base em evidências estruturadas."
+        : `Relatório IA indisponível (${aiReport?.reason ?? "motivo não informado"}).`,
       input: {
         cnpj: cleanCnpj,
         summary,
@@ -3399,8 +3402,8 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
   );
   updateOrchestrationStep(orchestration, "agent_7_relatorio_ai", "completed", {
     message: aiReport?.available
-      ? "Relatorio IA gerado com sucesso."
-      : `Relatorio IA indisponivel: ${aiReport?.reason ?? "motivo nao informado"}`,
+      ? "Relatório IA gerado com sucesso."
+      : `Relatório IA indisponível: ${aiReport?.reason ?? "motivo não informado"}`,
     summary: {
       available: Boolean(aiReport?.available),
       model: aiReport?.model ?? null,

@@ -43,12 +43,12 @@ async function analyzeEnvironmentalCompliance(cnpj: string): Promise<Environment
     const message =
       data && typeof data === "object" && "error" in data && typeof data.error === "string"
         ? data.error
-        : "Nao foi possivel executar a analise ambiental.";
+        : "Não foi possível executar a análise ambiental.";
     throw new Error(message);
   }
 
   if (!data || typeof data !== "object") {
-    throw new Error("Resposta invalida da API.");
+    throw new Error("Resposta inválida da API.");
   }
 
   return data as EnvironmentalComplianceResult;
@@ -65,12 +65,12 @@ async function loadEnvironmentalComplianceById(analysisId: string): Promise<Envi
     const message =
       data && typeof data === "object" && "error" in data && typeof data.error === "string"
         ? data.error
-        : "Nao foi possivel reabrir a analise ambiental.";
+        : "Não foi possível reabrir a análise ambiental.";
     throw new Error(message);
   }
 
   if (!data || typeof data !== "object") {
-    throw new Error("Resposta invalida da API ao reabrir analise.");
+    throw new Error("Resposta inválida da API ao reabrir análise.");
   }
 
   return data as EnvironmentalComplianceResult;
@@ -88,12 +88,12 @@ async function patchEnvironmentalActionPlan(analysisId: string, items: Environme
     const message =
       data && typeof data === "object" && "error" in data && typeof data.error === "string"
         ? data.error
-        : "Falha ao atualizar plano de acao.";
+        : "Falha ao atualizar plano de ação.";
     throw new Error(message);
   }
 
   if (!data || typeof data !== "object") {
-    throw new Error("Resposta invalida da API ao atualizar plano de acao.");
+    throw new Error("Resposta inválida da API ao atualizar plano de ação.");
   }
 
   return data as { analysis_id: string; action_plan: { items: EnvironmentalActionPlanItem[] } };
@@ -136,12 +136,12 @@ async function captureAreasContaminadasEvidence(params: {
     const message =
       data && typeof data === "object" && "error" in data && typeof data.error === "string"
         ? data.error
-        : "Falha ao capturar screenshot de areas contaminadas.";
+        : "Falha ao capturar screenshot de áreas contaminadas.";
     throw new Error(message);
   }
 
   if (!data || typeof data !== "object" || !("capture" in data)) {
-    throw new Error("Resposta invalida da captura de screenshot.");
+    throw new Error("Resposta inválida da captura de screenshot.");
   }
 
   return (data as { capture: AreasContaminadasScreenshotCapture }).capture;
@@ -308,8 +308,8 @@ function buildExecutiveFallback(result: EnvironmentalComplianceResult | null, ft
 
   const coverage_gaps = [
     result?.coverage?.federal?.status !== "api_ready" ? "Cobertura federal parcial/manual." : "",
-    result?.coverage?.state?.status !== "api_ready" ? "Cobertura estadual exige validacao manual complementar." : "",
-    result?.coverage?.municipal?.status !== "api_ready" ? "Cobertura municipal exige validacao manual complementar." : "",
+    result?.coverage?.state?.status !== "api_ready" ? "Cobertura estadual exige validação manual complementar." : "",
+    result?.coverage?.municipal?.status !== "api_ready" ? "Cobertura municipal exige validação manual complementar." : "",
     result?.coverage?.ambiental_territorial?.status !== "api_ready" ? "Cobertura territorial parcial/manual." : "",
     !fteDeep?.available ? `RAG/FTE em fallback: ${fteDeep?.reason || "indisponível"}.` : "",
     areas?.method !== "api_match" ? "Áreas contaminadas em fluxo manual assistido." : "",
@@ -361,9 +361,9 @@ function buildFallbackActionPlan(items: string[]): EnvironmentalActionPlanItem[]
   const normalizedItems = items.length
     ? items
     : [
-        "Validar enquadramento federal (CTF/APP) e FTE aplicavel.",
+        "Validar enquadramento federal (CTF/APP) e FTE aplicável.",
         "Confirmar licenciamento estadual/municipal com base nos CNAEs da empresa.",
-        "Organizar trilha de evidencias com responsavel e prazo.",
+        "Organizar trilha de evidências com responsável e prazo.",
       ];
   return normalizedItems.slice(0, 6).map((title, index) => ({
     id: `fallback_ap_${index + 1}`,
@@ -400,13 +400,13 @@ function buildAiFallback(raw: Record<string, any>, payload: EnvironmentalComplia
 function humanizeCoverageStatus(status: string | null | undefined) {
   const normalized = String(status ?? "").toLowerCase();
   if (normalized === "api_ready") return "Automatizado";
-  if (normalized === "manual_required") return "Revisao manual necessaria";
+  if (normalized === "manual_required") return "Revisão manual necessária";
   return "Parcial";
 }
 
 function humanizeCoverageMode(mode: string | null | undefined) {
   const normalized = String(mode ?? "").toLowerCase();
-  if (normalized.includes("api")) return "Consulta automatica";
+  if (normalized.includes("api")) return "Consulta automática";
   if (normalized.includes("manual")) return "Consulta manual assistida";
   if (normalized.includes("dataset")) return "Consulta por base estruturada";
   return "Consulta parcial";
@@ -416,7 +416,7 @@ function humanizeSourceStatus(status: string | null | undefined) {
   const normalized = String(status ?? "").toLowerCase();
   if (normalized === "success") return "Sucesso";
   if (normalized === "not_found") return "Sem achados";
-  if (normalized === "unavailable") return "Indisponivel";
+  if (normalized === "unavailable") return "Indisponível";
   if (normalized === "error") return "Falha";
   return "Parcial";
 }
@@ -424,18 +424,18 @@ function humanizeSourceStatus(status: string | null | undefined) {
 function humanizeSourceReason(reason: string | null | undefined) {
   const normalized = String(reason ?? "").toLowerCase();
   if (!normalized) return "Sem detalhe adicional";
-  if (normalized === "ok" || normalized === "rule_match" || normalized === "http_reachable") return "Consulta concluida";
+  if (normalized === "ok" || normalized === "rule_match" || normalized === "http_reachable") return "Consulta concluída";
   if (normalized === "no_match" || normalized === "not_found") return "Nenhum registro localizado";
-  if (normalized === "missing_api_key") return "Credencial da fonte nao configurada";
+  if (normalized === "missing_api_key") return "Credencial da fonte não configurada";
   if (normalized === "timeout_or_network") return "Timeout ou instabilidade de rede";
-  if (normalized === "manual_required" || normalized === "manual_assisted_flow") return "Exige verificacao manual";
+  if (normalized === "manual_required" || normalized === "manual_assisted_flow") return "Exige verificação manual";
   if (normalized.startsWith("http_")) return `Erro remoto (${normalized.toUpperCase()})`;
   return normalized.replaceAll("_", " ");
 }
 
 function humanizeExecutionStatus(status: string | null | undefined) {
   const normalized = String(status ?? "").toLowerCase();
-  if (normalized === "completed" || normalized === "success") return "Concluido";
+  if (normalized === "completed" || normalized === "success") return "Concluído";
   if (normalized === "running") return "Em andamento";
   if (normalized === "failed" || normalized === "error") return "Falha";
   if (normalized === "partial") return "Parcial";
@@ -445,18 +445,18 @@ function humanizeExecutionStatus(status: string | null | undefined) {
 
 function humanizeAreasMethod(method: string | null | undefined, status: string | null | undefined) {
   const normalized = String(method ?? "").toLowerCase();
-  if (normalized === "api_match") return "Match automatico em base oficial";
+  if (normalized === "api_match") return "Match automático em base oficial";
   if (normalized === "dataset_match") return "Match por base estruturada";
   if (String(status ?? "").toLowerCase() === "match_found") return "Match localizado";
   return "Consulta manual assistida";
 }
 
 function humanizePersistence(mode: string | null | undefined, durable: boolean | null | undefined) {
-  if (durable) return "Historico salvo em banco";
+  if (durable) return "Histórico salvo em banco";
   const normalized = String(mode ?? "").toLowerCase();
-  if (normalized.includes("database")) return "Historico salvo em banco";
-  if (normalized.includes("memory")) return "Sessao temporaria (cache em memoria)";
-  return "Sessao temporaria";
+  if (normalized.includes("database")) return "Histórico salvo em banco";
+  if (normalized.includes("memory")) return "Sessão temporária (cache em memória)";
+  return "Sessão temporária";
 }
 
 function removeMarkdownSyntax(text: string) {
@@ -709,7 +709,7 @@ export default function Index() {
             method: "manual_required",
             status: "legacy_contract",
             summary:
-              raw?.areas_contaminadas?.instrucao ?? "Resposta legado sem evidencias estruturadas de areas contaminadas.",
+              raw?.areas_contaminadas?.instrucao ?? "Resposta legada sem evidências estruturadas de áreas contaminadas.",
             matches: [],
             official_map_embed_url: SEMIL_MAP_URL,
             official_map_open_url: SEMIL_MAP_URL,
@@ -725,7 +725,7 @@ export default function Index() {
     } else {
       const fallbackExecutive = buildExecutiveFallback(payload, normalizedFteDeep, normalizedAreas);
       const fallbackTitles = [
-        ...fallbackExecutive.critical_obligations.map((item) => `Executar obrigacao critica: ${item}`),
+        ...fallbackExecutive.critical_obligations.map((item) => `Executar obrigação crítica: ${item}`),
         ...fallbackExecutive.coverage_gaps.map((item) => `Mitigar lacuna: ${item}`),
       ].filter(Boolean);
       setActionPlanItems(buildFallbackActionPlan(fallbackTitles));
@@ -771,7 +771,7 @@ export default function Index() {
       const recentHistory = await fetchEnvironmentalHistory(clean).catch(() => []);
       setHistoryItems(recentHistory);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Falha ao executar analise.");
+      setError(requestError instanceof Error ? requestError.message : "Falha ao executar análise.");
     } finally {
       setLoading(false);
     }
@@ -798,7 +798,7 @@ export default function Index() {
         if (!cancelled) setHistoryItems(recentHistory);
       } catch (requestError) {
         if (cancelled) return;
-        setError(requestError instanceof Error ? requestError.message : "Falha ao reabrir analise.");
+        setError(requestError instanceof Error ? requestError.message : "Falha ao reabrir análise.");
       } finally {
         if (!cancelled) setLoadingSavedAnalysis(false);
       }
@@ -871,7 +871,7 @@ export default function Index() {
 
   const openPdfExport = () => {
     if (!fullResult?.analysis_id) {
-      setActionPlanMessage("Exportacao PDF requer analysis_id. Rode em backend atualizado para persistencia.");
+      setActionPlanMessage("Exportação PDF requer analysis_id. Rode em backend atualizado para persistência.");
       return;
     }
     window.open(`${COMPLIANCE_BASE_ENDPOINT}/${encodeURIComponent(fullResult.analysis_id)}/export.pdf`, "_blank");
@@ -883,7 +883,7 @@ export default function Index() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `compliance-ambiental-${cleanCNPJ(fullResult.cnpj || cnpj) || "analise"}.json`;
+    anchor.download = `compliance-ambiental-${cleanCNPJ(fullResult.cnpj || cnpj) || "análise"}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
   };
@@ -951,7 +951,7 @@ export default function Index() {
         const fromPayload = normalizeActionPlanItems(fullResult?.action_plan?.items ?? []);
         if (fromPayload.length > 0) return fromPayload;
         const fallbackTitles = [
-          ...criticalObligationsView.map((item) => `Executar obrigacao critica: ${item}`),
+          ...criticalObligationsView.map((item) => `Executar obrigação crítica: ${item}`),
           ...coverageGapsView.map((item) => `Mitigar lacuna: ${item}`),
         ];
         return buildFallbackActionPlan(fallbackTitles);
@@ -966,8 +966,8 @@ export default function Index() {
   const aiTrustLevel = aiHighEvidenceRatio >= 60 ? "alto" : aiHighEvidenceRatio >= 30 ? "medio" : "baixo";
   const aiTransparencySummary =
     aiEvidenceTotal > 0
-      ? `Lastro IA ${aiTrustLevel.toUpperCase()} (${aiHighEvidenceRatio}% de evidencias com confianca alta).`
-      : "Lastro IA indisponivel para esta execucao.";
+      ? `Lastro IA ${aiTrustLevel.toUpperCase()} (${aiHighEvidenceRatio}% de evidências com confiança alta).`
+      : "Lastro IA indisponível para esta execução.";
   const aiNarrativeView = removeMarkdownSyntax(resultAI?.narrative || "");
   const aiNarrativeParagraphs = useMemo(
     () =>
@@ -979,30 +979,30 @@ export default function Index() {
   );
   const aiUnavailableReason = useMemo(() => {
     const raw = String(resultAI?.reason ?? "").trim();
-    if (!raw) return "motivo nao informado";
+    if (!raw) return "motivo não informado";
     if (/\s/.test(raw)) return raw;
     return humanizeSourceReason(raw);
   }, [resultAI?.reason]);
   const aiTransparencyReasons = useMemo(() => {
     const reasons: string[] = [];
     if (aiEvidenceTotal === 0) {
-      reasons.push("Nao ha evidencias suficientes para calcular confianca.");
+      reasons.push("Não há evidências suficientes para calcular confiança.");
     } else {
       reasons.push(
-        `Foram avaliadas ${aiEvidenceTotal} evidencias: ${confidenceMapView.alta} alta, ${confidenceMapView.media} media e ${confidenceMapView.baixa} baixa confianca.`
+        `Foram avaliadas ${aiEvidenceTotal} evidências: ${confidenceMapView.alta} alta, ${confidenceMapView.media} média e ${confidenceMapView.baixa} baixa confiança.`
       );
       if (confidenceMapView.baixa > confidenceMapView.alta) {
-        reasons.push("A proporcao de evidencias de baixa confianca esta maior que a de alta confianca.");
+        reasons.push("A proporção de evidências de baixa confiança está maior que a de alta confiança.");
       }
     }
     if (!resultAI?.available) {
-      reasons.push(`Resumo IA indisponivel nesta execucao (${aiUnavailableReason}).`);
+      reasons.push(`Resumo IA indisponível nesta execução (${aiUnavailableReason}).`);
     }
     if (fullResult?.persistence?.durable === false) {
-      reasons.push("A analise atual esta em cache de memoria, sem persistencia duravel em banco.");
+      reasons.push("A análise atual está em cache de memória, sem persistência durável em banco.");
     }
     if (fallbackFlagsView.length > 0) {
-      reasons.push(`Foram detectados ${fallbackFlagsView.length} fallback(s) em conectores/agentes nesta execucao.`);
+      reasons.push(`Foram detectados ${fallbackFlagsView.length} fallback(s) em conectores/agentes nesta execução.`);
     }
     return reasons.slice(0, 4);
   }, [aiEvidenceTotal, confidenceMapView, resultAI?.available, aiUnavailableReason, fullResult?.persistence?.durable, fallbackFlagsView.length]);
@@ -1033,15 +1033,15 @@ export default function Index() {
     setDetailPanelItem({
       kind: "rag",
       title: `CNAE ${item.cnae_codigo}`,
-      subtitle: item.cnae_descricao || "Analise aprofundada CNAE x FTE",
+      subtitle: item.cnae_descricao || "Análise aprofundada CNAE x FTE",
       risk: item.risco,
       status: item.probabilidade_enquadramento,
-      description: item.tese_enquadramento || "Sem tese textual detalhada nesta execucao.",
+      description: item.tese_enquadramento || "Sem tese textual detalhada nesta execução.",
       sections: [
-        { title: "Obrigacoes sugeridas", items: item.obrigacoes },
-        { title: "Riscos juridicos", items: item.riscos_juridicos },
-        { title: "Recomendacoes de acao", items: item.recomendacoes_acao },
-        { title: "Lacunas de evidencia", items: item.lacunas },
+        { title: "Obrigações sugeridas", items: item.obrigacoes },
+        { title: "Riscos jurídicos", items: item.riscos_juridicos },
+        { title: "Recomendações de ação", items: item.recomendacoes_acao },
+        { title: "Lacunas de evidência", items: item.lacunas },
         { title: "FTEs relacionadas", items: refs },
       ],
       links,
@@ -1079,8 +1079,8 @@ export default function Index() {
       status: resultState?.mode || "manual_required",
       description: match.obrigacao,
       sections: [
-        { title: "Classificacao", items: [`Tipo: ${match.tipo}`] },
-        { title: "Legislacao citada", items: match.legislacao || [] },
+        { title: "Classificação", items: [`Tipo: ${match.tipo}`] },
+        { title: "Legislação citada", items: match.legislacao || [] },
         { title: "Nota do agente estadual", items: [resultState?.nota || "Sem nota estadual."] },
       ],
       links: dedupeDetailLinks([
@@ -1106,14 +1106,14 @@ export default function Index() {
       status: resultMunicipal?.mode || "manual_required",
       description: match.enquadramento,
       sections: [
-        { title: "Competencia", items: [match.competencia] },
+        { title: "Competência", items: [match.competencia] },
         { title: "Nota do agente municipal", items: [resultMunicipal?.nota || "Sem nota municipal."] },
       ],
       links: dedupeDetailLinks([
         ...(legislacao?.lc140 ? [{ label: "LC 140/2011", href: legislacao.lc140 }] : []),
         ...(legislacao?.consema ? [{ label: "DN CONSEMA", href: legislacao.consema }] : []),
         ...(legislacao?.municipios_habilitados
-          ? [{ label: "Municipios habilitados", href: legislacao.municipios_habilitados }]
+          ? [{ label: "Municípios habilitados", href: legislacao.municipios_habilitados }]
           : []),
       ]),
       raw: match,
@@ -1124,17 +1124,17 @@ export default function Index() {
     setDetailPanelItem({
       kind: "areas",
       title: `Territorial - ${match.empreendimento || "Empreendimento sem nome"}`,
-      subtitle: `${match.layer_name} | estrategia ${match.strategy}`,
+      subtitle: `${match.layer_name} | estratégia ${match.strategy}`,
       risk: match.risco,
       status: resultAreas?.status || "unknown",
-      description: `Score de aderencia ${match.score.toFixed(2)} para o match ${match.match_id}.`,
+      description: `Score de aderência ${match.score.toFixed(2)} para o match ${match.match_id}.`,
       sections: [
-        { title: "Classificacao territorial", items: [`Classificacao: ${match.classificacao || "-"}`, `Atividade: ${match.atividade || "-"}`] },
+        { title: "Classificação territorial", items: [`Classificação: ${match.classificacao || "-"}`, `Atividade: ${match.atividade || "-"}`] },
         {
-          title: "Endereco e georef",
+          title: "Endereço e georreferência",
           items: [
-            `Endereco: ${match.endereco || "-"}`,
-            `Municipio: ${match.municipio || "-"}`,
+            `Endereço: ${match.endereco || "-"}`,
+            `Município: ${match.municipio || "-"}`,
             `CEP: ${match.cep || "-"}`,
             `Latitude: ${match.latitude ?? "-"}`,
             `Longitude: ${match.longitude ?? "-"}`,
@@ -1156,7 +1156,7 @@ export default function Index() {
   const openEvidenceDetails = (item: NonNullable<EnvironmentalComplianceResult["evidence"]>[number]) => {
     setDetailPanelItem({
       kind: "evidence",
-      title: `Evidencia ${item.id}`,
+      title: `Evidência ${item.id}`,
       subtitle: `${item.agent} | ${item.jurisdiction}`,
       status: humanizeExecutionStatus(item.status),
       description: item.resumo,
@@ -1166,14 +1166,14 @@ export default function Index() {
           title: "Regra aplicada",
           items: item.regra_aplicada
             ? [
-                `Condicao: ${item.regra_aplicada.condicao}`,
+                `Condição: ${item.regra_aplicada.condicao}`,
                 `Severidade: ${item.regra_aplicada.severidade}`,
-                `Obrigacao: ${item.regra_aplicada.obrigacao_resultante}`,
+                `Obrigação: ${item.regra_aplicada.obrigacao_resultante}`,
                 ...(item.regra_aplicada.base_legal || []).map((entry) => `Base legal: ${entry}`),
               ]
             : [],
         },
-        { title: "Integridade", items: [`input_hash: ${item.input_hash}`, `output_hash: ${item.output_hash}`, `confianca: ${item.confianca}`] },
+        { title: "Integridade", items: [`input_hash: ${item.input_hash}`, `output_hash: ${item.output_hash}`, `confiança: ${item.confianca}`] },
       ],
       raw: item,
     });
@@ -1190,9 +1190,9 @@ export default function Index() {
         {
           title: "Telemetria",
           items: [
-            `Latencia: ${source.latency_ms}ms`,
+            `Latência: ${source.latency_ms}ms`,
             `Motivo: ${humanizeSourceReason(source.status_reason)}`,
-            `Evidencias: ${source.evidence_count ?? "-"}`,
+            `Evidências: ${source.evidence_count ?? "-"}`,
           ],
         },
       ],
@@ -1213,7 +1213,7 @@ export default function Index() {
               Compliance Ambiental Nacional
             </h1>
           </div>
-          <p className="text-slate-300 text-sm">Motor auditavel de licenciamento por CNPJ (federal, estadual, municipal e territorial).</p>
+          <p className="text-slate-300 text-sm">Motor auditável de licenciamento por CNPJ (federal, estadual, municipal e territorial).</p>
 
           <div className="mt-6 flex flex-col gap-3 lg:flex-row">
             <div className="flex-1 relative">
@@ -1288,7 +1288,7 @@ export default function Index() {
         <div className="bg-white border-b border-gray-200">
           <div className="max-w-6xl mx-auto px-6 py-3">
             <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
-              {["CNPJ/CNAE", "RAG CNAE x FTE", "Federal", "Estadual", "Municipal", "Areas Contam.", "Relatorio IA"].map((label, index) => (
+              {["CNPJ/CNAE", "RAG CNAE x FTE", "Federal", "Estadual", "Municipal", "Áreas Contam.", "Relatório IA"].map((label, index) => (
                 <div key={label} className="flex items-center gap-1.5">
                   <div
                     className={`w-2 h-2 rounded-full ${
@@ -1298,7 +1298,7 @@ export default function Index() {
                   <span className={currentAgent === index + 1 ? "text-gray-900 font-medium" : ""}>{label}</span>
                 </div>
               ))}
-              {loadingSavedAnalysis && <span className="text-slate-700 font-medium">Reabrindo analise persistida...</span>}
+              {loadingSavedAnalysis && <span className="text-slate-700 font-medium">Reabrindo análise persistida...</span>}
             </div>
           </div>
         </div>
@@ -1325,8 +1325,8 @@ export default function Index() {
               <div className="text-right">
                 <Badge type={dadosCNPJ.situacao?.toLowerCase().includes("ativa") ? "baixo" : "alto"}>{dadosCNPJ.situacao || "N/A"}</Badge>
                 <p className="text-xs text-gray-400 mt-1">Fonte: {dadosCNPJ.source}</p>
-                <p className="text-xs text-gray-400 mt-1">Versao da analise: {fullResult?.schema_version || "-"}</p>
-                <p className="text-xs text-gray-400 mt-1">Historico: {humanizePersistence(fullResult?.persistence?.mode, fullResult?.persistence?.durable)}</p>
+                <p className="text-xs text-gray-400 mt-1">Versão da análise: {fullResult?.schema_version || "-"}</p>
+                <p className="text-xs text-gray-400 mt-1">Histórico: {humanizePersistence(fullResult?.persistence?.mode, fullResult?.persistence?.durable)}</p>
               </div>
             </div>
             {currentAgent >= 8 && fullResult && (
@@ -1340,7 +1340,7 @@ export default function Index() {
                   <span className="font-semibold text-red-700">{totalAlerts}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-gray-500">Evidencias:</span>
+                  <span className="text-gray-500">Evidências:</span>
                   <span className="font-semibold">{evidenceView.length}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -1354,19 +1354,19 @@ export default function Index() {
 
         {fullResult && fullResult.schema_version !== "br-v1" && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg px-5 py-4 text-amber-900 text-sm">
-            Versao antiga de analise detectada ({fullResult.schema_version || "-"}). Alguns blocos avancados podem vir incompletos ate atualizar o backend.
+            Versão antiga de análise detectada ({fullResult.schema_version || "-"}). Alguns blocos avançados podem vir incompletos até atualizar o backend.
           </div>
         )}
 
         {activeMode === "executive" && fullResult && loading && (
           <div className="bg-white rounded-lg border border-slate-200 px-5 py-4 text-sm text-slate-700">
-            Consolidando o Resumo Executivo com os 7 agentes. Aguarde o termino da analise para os blocos finais.
+            Consolidando o Resumo Executivo com os 7 agentes. Aguarde o término da análise para os blocos finais.
           </div>
         )}
 
         {activeMode === "executive" && fullResult?.persistence?.durable === false && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg px-5 py-4 text-amber-900 text-sm">
-            Persistencia em cache de memoria detectada. Para historico duravel entre reinicios, configure `DATABASE_URL` no backend.
+            Persistência em cache de memória detectada. Para histórico durável entre reinícios, configure `DATABASE_URL` no backend.
           </div>
         )}
 
@@ -1514,7 +1514,10 @@ export default function Index() {
               </div>
 
               <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-5 space-y-3">
-                <h3 className="text-sm font-semibold tracking-wide text-slate-700 uppercase">Transparência IA</h3>
+                <h3 className="text-sm font-semibold tracking-wide text-slate-700 uppercase">Confiabilidade do lastro IA</h3>
+                <p className="text-xs text-slate-500 mb-1">
+                  O percentual indica <strong>quanto das evidências</strong> (conectores/agentes) foi classificado com <strong>confiança alta</strong> — não é nível de risco. Quanto maior, mais lastro sólido para o relatório.
+                </p>
                 <p className="text-xs text-slate-700">{aiTransparencySummary}</p>
                 {aiTransparencyReasons.length > 0 && (
                   <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 space-y-1">
@@ -1532,7 +1535,7 @@ export default function Index() {
                         </p>
                       ))
                     ) : (
-                      <p className="text-slate-500">Sem conteudo textual gerado.</p>
+                      <p className="text-slate-500">Sem conteúdo textual gerado.</p>
                     )}
                   </div>
                 ) : (
@@ -1551,7 +1554,7 @@ export default function Index() {
                   onClick={() => setMode("auditor")}
                   className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
                 >
-                  Abrir relatorio completo (visao 7 agentes)
+                  Abrir relatório completo (visão 7 agentes)
                 </button>
               </div>
             </div>
@@ -1590,8 +1593,8 @@ export default function Index() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left text-xs text-gray-500 uppercase tracking-wider">
-                        <th className="pb-2 pr-3">Codigo</th>
-                        <th className="pb-2 pr-3">Descricao</th>
+                        <th className="pb-2 pr-3">Código</th>
+                        <th className="pb-2 pr-3">Descrição</th>
                         <th className="pb-2">Tipo</th>
                       </tr>
                     </thead>
@@ -1601,7 +1604,7 @@ export default function Index() {
                           <td className="py-2 pr-3 font-mono text-xs">{cnae.codigo}</td>
                           <td className="py-2 pr-3 text-xs">{cnae.descricao || "-"}</td>
                           <td className="py-2">
-                            <Badge type={cnae.principal ? "info" : "neutral"}>{cnae.principal ? "Principal" : "Secundario"}</Badge>
+                            <Badge type={cnae.principal ? "info" : "neutral"}>{cnae.principal ? "Principal" : "Secundário"}</Badge>
                           </td>
                         </tr>
                       ))}
@@ -1621,7 +1624,7 @@ export default function Index() {
             {(resultFteDeep || fullResult || currentAgent >= 2) && (
           <AgentCard
             number={2}
-            title="Agente 2 - Analise Profunda CNAE x FTE (RAG)"
+            title="Agente 2 - Análise Profunda CNAE x FTE (RAG)"
             icon="A2"
             status={fteDeepView ? (fteDeepView.available ? "warning" : "info") : currentAgent === 2 ? "info" : "idle"}
           >
@@ -1636,7 +1639,7 @@ export default function Index() {
                     <div className="flex flex-wrap gap-2 text-xs">
                       <Badge type="info">Findings: {fteDeepView.stats?.total_findings ?? 0}</Badge>
                       <Badge type="alto">Risco alto: {fteDeepView.stats?.high_risk_findings ?? 0}</Badge>
-                      <Badge type="medio">Risco medio: {fteDeepView.stats?.medium_risk_findings ?? 0}</Badge>
+                      <Badge type="medio">Risco médio: {fteDeepView.stats?.medium_risk_findings ?? 0}</Badge>
                       <Badge type="baixo">Risco baixo: {fteDeepView.stats?.low_risk_findings ?? 0}</Badge>
                     </div>
                     <div className="space-y-2 max-h-80 overflow-auto pr-1">
@@ -1644,7 +1647,7 @@ export default function Index() {
                         <div key={`${item.cnae_codigo}-${item.principal ? "p" : "s"}`} className="bg-white rounded-lg border border-gray-200 px-4 py-3 text-xs">
                           <div className="flex items-center justify-between gap-2">
                             <p className="font-semibold text-gray-900">
-                              {item.cnae_codigo} - {item.cnae_descricao || "CNAE sem descricao"}
+                              {item.cnae_codigo} - {item.cnae_descricao || "CNAE sem descrição"}
                             </p>
                             <div className="flex items-center gap-2">
                               <Badge type={riskBadgeType(item.risco)}>{item.risco}</Badge>
@@ -1662,14 +1665,14 @@ export default function Index() {
                 ) : (
                   <div className="space-y-3">
                     <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
-                      Analise RAG indisponivel: {fteDeepView.reason || "motivo nao informado"}.
+                      Análise RAG indisponível: {fteDeepView.reason || "motivo não informado"}.
                     </div>
                     <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-xs space-y-1 text-gray-700">
                       <p>
-                        <strong>Diagnostico:</strong>{" "}
+                        <strong>Diagnóstico:</strong>{" "}
                         {ragSource
                           ? `${humanizeSourceStatus(ragSource.status)} / ${humanizeSourceReason(ragSource.status_reason)}`
-                          : "Fonte openai_fte_rag ausente na resposta desta execucao."}
+                          : "Fonte openai_fte_rag ausente na resposta desta execução."}
                       </p>
                       {ragSource?.message && <p>{ragSource.message}</p>}
                       <p>
@@ -1681,7 +1684,7 @@ export default function Index() {
                         <div className="flex flex-wrap gap-2 text-xs">
                           <Badge type="info">Fallback: {fteDeepView.stats?.total_findings ?? fteDeepView.findings.length} CNAE(s)</Badge>
                           <Badge type="alto">Risco alto: {fteDeepView.stats?.high_risk_findings ?? 0}</Badge>
-                          <Badge type="medio">Risco medio: {fteDeepView.stats?.medium_risk_findings ?? 0}</Badge>
+                          <Badge type="medio">Risco médio: {fteDeepView.stats?.medium_risk_findings ?? 0}</Badge>
                           <Badge type="baixo">Risco baixo: {fteDeepView.stats?.low_risk_findings ?? 0}</Badge>
                         </div>
                         <div className="space-y-2 max-h-80 overflow-auto pr-1">
@@ -1689,7 +1692,7 @@ export default function Index() {
                             <div key={`${item.cnae_codigo}-${item.principal ? "p" : "s"}-fallback`} className="bg-white rounded-lg border border-gray-200 px-4 py-3 text-xs">
                               <div className="flex items-center justify-between gap-2">
                                 <p className="font-semibold text-gray-900">
-                                  {item.cnae_codigo} - {item.cnae_descricao || "CNAE sem descricao"}
+                                  {item.cnae_codigo} - {item.cnae_descricao || "CNAE sem descrição"}
                                 </p>
                                 <div className="flex items-center gap-2">
                                   <Badge type={riskBadgeType(item.risco)}>{item.risco}</Badge>
@@ -1760,7 +1763,7 @@ export default function Index() {
                 )}
                 {fullResult?.federal?.obligations?.length ? (
                   <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-xs space-y-1">
-                    <p className="font-semibold text-gray-800">Obrigacoes federais sugeridas</p>
+                    <p className="font-semibold text-gray-800">Obrigações federais sugeridas</p>
                     {fullResult?.federal?.obligations?.map((item) => (
                       <p key={item} className="text-gray-600">
                         - {item}
@@ -1798,13 +1801,13 @@ export default function Index() {
                 <div className="flex flex-wrap gap-2">
                   <Badge type={resultState.mode === "api_ready" ? "info" : "neutral"}>{humanizeCoverageMode(resultState.mode)}</Badge>
                   <Badge type={resultState.available ? "baixo" : "medio"}>
-                    {resultState.available ? "Atualizacao automatica ativa" : "Revisao manual necessaria"}
+                    {resultState.available ? "Atualização automática ativa" : "Revisão manual necessária"}
                   </Badge>
                 </div>
                 <p className="text-sm text-gray-700">{resultState.nota}</p>
                 {resultState.obligations.length > 0 && (
                   <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-xs space-y-1">
-                    <p className="font-semibold text-gray-800">Obrigacoes estaduais</p>
+                    <p className="font-semibold text-gray-800">Obrigações estaduais</p>
                     {resultState.obligations.map((item) => (
                       <p key={item} className="text-gray-600">
                         - {item}
@@ -1836,7 +1839,7 @@ export default function Index() {
                   </>
                 ) : (
                   <div className="bg-sky-50 border border-sky-200 rounded-lg px-4 py-3 text-sm text-sky-900">
-                    Fluxo estadual assistido: fonte oficial da UF sem conector estruturado nesta versao.
+                    Fluxo estadual assistido: fonte oficial da UF sem conector estruturado nesta versão.
                   </div>
                 )}
               </div>
@@ -1847,7 +1850,7 @@ export default function Index() {
             {(resultMunicipal || currentAgent === 5) && (
           <AgentCard
             number={5}
-            title={`Agente 5 - Regras Municipais (${fullResult?.jurisdiction_context?.municipio_nome || "Municipio"})`}
+            title={`Agente 5 - Regras Municipais (${fullResult?.jurisdiction_context?.municipio_nome || "Município"})`}
             icon="A5"
             status={
               resultMunicipal
@@ -1867,13 +1870,13 @@ export default function Index() {
                 <div className="flex flex-wrap gap-2">
                   <Badge type={resultMunicipal.mode === "api_ready" ? "info" : "neutral"}>{humanizeCoverageMode(resultMunicipal.mode)}</Badge>
                   <Badge type={resultMunicipal.available ? "baixo" : "medio"}>
-                    {resultMunicipal.available ? "Atualizacao automatica ativa" : "Revisao manual necessaria"}
+                    {resultMunicipal.available ? "Atualização automática ativa" : "Revisão manual necessária"}
                   </Badge>
                 </div>
                 <p className="text-sm text-gray-700">{resultMunicipal.nota}</p>
                 {resultMunicipal.obligations.length > 0 && (
                   <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-xs space-y-1">
-                    <p className="font-semibold text-gray-800">Obrigacoes municipais</p>
+                    <p className="font-semibold text-gray-800">Obrigações municipais</p>
                     {resultMunicipal.obligations.map((item) => (
                       <p key={item} className="text-gray-600">
                         - {item}
@@ -1895,7 +1898,7 @@ export default function Index() {
                         </div>
                         <p className="text-gray-600 mt-1">{match.descricao}</p>
                         <p className="text-gray-500 mt-1">{match.enquadramento}</p>
-                        <p className="text-gray-400 mt-1">Competencia: {match.competencia}</p>
+                        <p className="text-gray-400 mt-1">Competência: {match.competencia}</p>
                       </div>
                     ))}
                   </div>
@@ -1912,7 +1915,7 @@ export default function Index() {
             {(resultAreas || currentAgent === 6) && (
           <AgentCard
             number={6}
-            title="Agente 6 - Areas Contaminadas"
+            title="Agente 6 - Áreas Contaminadas"
             icon="A6"
             status={
               resultAreas
@@ -1933,8 +1936,8 @@ export default function Index() {
 
                 <div className="flex flex-wrap gap-2">
                   <Badge type={resultAreas.method === "api_match" ? "info" : "neutral"}>{humanizeAreasMethod(resultAreas.method, resultAreas.status)}</Badge>
-                  <Badge type={resultAreas.matches.length > 0 ? "alto" : "baixo"}>Ocorrencias encontradas: {resultAreas.matches.length}</Badge>
-                  <Badge type="neutral">Situacao: {resultAreas.status === "match_found" ? "Com correspondencia" : "Sem correspondencia automatica"}</Badge>
+                  <Badge type={resultAreas.matches.length > 0 ? "alto" : "baixo"}>Ocorrências encontradas: {resultAreas.matches.length}</Badge>
+                  <Badge type="neutral">Situação: {resultAreas.status === "match_found" ? "Com correspondência" : "Sem correspondência automática"}</Badge>
                 </div>
 
                 {areaLayers.length > 0 && (
@@ -1954,10 +1957,10 @@ export default function Index() {
                         <tr className="text-left text-gray-500 uppercase tracking-wide">
                           <th className="pb-2 pr-3">Empreendimento</th>
                           <th className="pb-2 pr-3">Layer</th>
-                          <th className="pb-2 pr-3">Estrategia</th>
+                          <th className="pb-2 pr-3">Estratégia</th>
                           <th className="pb-2 pr-3">Score</th>
                           <th className="pb-2 pr-3">Risco</th>
-                          <th className="pb-2">Municipio</th>
+                          <th className="pb-2">Município</th>
                           <th className="pb-2">Detalhe</th>
                         </tr>
                       </thead>
@@ -1993,7 +1996,7 @@ export default function Index() {
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                       <Badge type={resultAreasCapture.status === "success" ? "baixo" : "medio"}>{humanizeSourceStatus(resultAreasCapture.status)}</Badge>
                       <span className="text-gray-500">motivo: {humanizeSourceReason(resultAreasCapture.status_reason)}</span>
-                      <span className="text-gray-500">latencia: {resultAreasCapture.latency_ms}ms</span>
+                      <span className="text-gray-500">latência: {resultAreasCapture.latency_ms}ms</span>
                       <span className="text-gray-500">bytes: {resultAreasCapture.bytes}</span>
                     </div>
                     {resultAreasCapture.message && <p className="text-xs text-gray-600">{resultAreasCapture.message}</p>}
@@ -2026,7 +2029,7 @@ export default function Index() {
                 </div>
 
                 {resultAreas.evidence_refs.length > 0 && (
-                  <p className="text-xs text-gray-500">Refs de evidencia territorial: {resultAreas.evidence_refs.join(", ")}</p>
+                  <p className="text-xs text-gray-500">Refs de evidência territorial: {resultAreas.evidence_refs.join(", ")}</p>
                 )}
 
                 {resultAreas.official_map_embed_url && (
@@ -2055,7 +2058,7 @@ export default function Index() {
             {(resultAI || currentAgent === 7) && (
           <AgentCard
             number={7}
-            title="Agente 7 - Relatorio IA Auditavel"
+            title="Agente 7 - Relatório IA Auditável"
             icon="A7"
             status={resultAI ? (resultAI.available ? "success" : "warning") : currentAgent === 7 ? "info" : "idle"}
           >
@@ -2065,7 +2068,7 @@ export default function Index() {
                 {resultAI.available ? (
                   <>
                     <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800">
-                      Relatorio IA gerado com base nas evidencias estruturadas.
+                      Relatório IA gerado com base nas evidências estruturadas.
                     </div>
                     <p className="text-xs text-gray-500">
                       Modelo: {resultAI.model || "N/A"} | Tokens in: {resultAI.input_tokens ?? "-"} | Tokens out: {resultAI.output_tokens ?? "-"}
@@ -2078,13 +2081,13 @@ export default function Index() {
                           </p>
                         ))
                       ) : (
-                        <p className="text-gray-500">Sem conteudo textual.</p>
+                        <p className="text-gray-500">Sem conteúdo textual.</p>
                       )}
                     </div>
                   </>
                 ) : (
                   <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
-                    Relatorio IA indisponivel: {aiUnavailableReason}
+                    Relatório IA indisponivel: {aiUnavailableReason}
                   </div>
                 )}
               </div>
@@ -2125,17 +2128,17 @@ export default function Index() {
             <h3 className="font-semibold text-gray-900">Modo Auditoria</h3>
 
             <div>
-              <p className="text-xs font-semibold text-gray-700 mb-2">Evidencias normalizadas</p>
+              <p className="text-xs font-semibold text-gray-700 mb-2">Evidências normalizadas</p>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-left text-gray-500 uppercase tracking-wide">
                       <th className="pb-2 pr-3">Agente</th>
-                      <th className="pb-2 pr-3">Jurisdicao</th>
+                      <th className="pb-2 pr-3">Jurisdição</th>
                       <th className="pb-2 pr-3">Fonte</th>
                       <th className="pb-2 pr-3">Regra</th>
                       <th className="pb-2 pr-3">Status</th>
-                      <th className="pb-2 pr-3">Confianca</th>
+                      <th className="pb-2 pr-3">Confiança</th>
                       <th className="pb-2">Resumo</th>
                       <th className="pb-2">Detalhe</th>
                     </tr>
@@ -2211,7 +2214,7 @@ export default function Index() {
                     </div>
                     <p className="text-gray-600 mt-1">{step.message || "-"}</p>
                     <p className="text-gray-400 mt-1">
-                      inicio: {step.started_at || "-"} | fim: {step.completed_at || "-"}
+                      início: {step.started_at || "-"} | fim: {step.completed_at || "-"}
                     </p>
                   </div>
                 ))}
@@ -2226,7 +2229,7 @@ export default function Index() {
         {!dadosCNPJ && !loading && !loadingSavedAnalysis && !error && (
           <div className="text-center py-16 text-gray-400">
             <p className="text-3xl mb-4 font-semibold">AGENTES</p>
-            <p className="text-sm">Digite um CNPJ para iniciar a verificacao de compliance ambiental.</p>
+            <p className="text-sm">Digite um CNPJ para iniciar a verificação de compliance ambiental.</p>
           </div>
         )}
 

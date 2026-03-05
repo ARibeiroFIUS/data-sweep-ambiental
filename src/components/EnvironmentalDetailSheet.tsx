@@ -47,21 +47,21 @@ export function EnvironmentalDetailSheet({
           <div className="border-b border-gray-200 bg-gray-50 px-6 py-5">
             <SheetHeader>
               <SheetTitle className="text-gray-900">{item?.title || "Detalhes"}</SheetTitle>
-              <SheetDescription className="text-gray-600">{item?.subtitle || "Visualizacao detalhada do item selecionado."}</SheetDescription>
+              <SheetDescription className="text-gray-600">{item?.subtitle || "Visualização detalhada do item selecionado."}</SheetDescription>
             </SheetHeader>
             <div className="mt-3 flex flex-wrap gap-2 text-xs">
               {item?.kind && (
                 <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-2.5 py-1 font-medium text-gray-700">
-                  tipo: {item.kind}
+                  Tipo: {item.kind}
                 </span>
               )}
               {item?.status && (
                 <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-2.5 py-1 font-medium text-gray-700">
-                  status: {item.status}
+                  Status: {item.status}
                 </span>
               )}
               {item?.risk && (
-                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 font-medium ${riskTone(item.risk)}`}>risco: {item.risk}</span>
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 font-medium ${riskTone(item.risk)}`}>Risco: {item.risk}</span>
               )}
             </div>
           </div>
@@ -83,7 +83,7 @@ export function EnvironmentalDetailSheet({
                         </p>
                       ))
                     ) : (
-                      <p className="text-sm text-gray-400">Sem dados para esta secao.</p>
+                      <p className="text-sm text-gray-400">Sem dados para esta seção.</p>
                     )}
                   </div>
                 </div>
@@ -111,7 +111,7 @@ export function EnvironmentalDetailSheet({
 
             {item?.raw !== undefined && (
               <div className="rounded-lg border border-gray-200 overflow-hidden">
-                <div className="bg-gray-100 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-600">Payload tecnico</div>
+                <div className="bg-gray-100 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-600">Payload técnico</div>
                 <pre className="max-h-80 overflow-auto bg-gray-950 text-gray-100 p-3 text-[11px] leading-relaxed">{JSON.stringify(item.raw, null, 2)}</pre>
               </div>
             )}
