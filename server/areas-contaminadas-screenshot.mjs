@@ -135,7 +135,6 @@ async function launchChromium() {
   const launchOptions = {
     headless: process.env.AREAS_CAPTURE_HEADLESS !== "false",
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
-    ...(systemChromiumPath ? { executablePath: systemChromiumPath } : {}),
   };
 
   try {
@@ -143,12 +142,20 @@ async function launchChromium() {
   } catch (error) {
     const reason = summarizeError(error);
     if (reason !== "chromium_not_installed") throw error;
+
+    if (systemChromiumPath) {
+      try {
+        return await chromium.launch({
+          ...launchOptions,
+          executablePath: systemChromiumPath,
+        });
+      } catch {
+        // continue to playwright install fallback
+      }
+    }
+
     await ensureChromiumInstalled();
-    return chromium.launch({
-      ...launchOptions,
-      // after install, prefer Playwright-managed executable path
-      ...(systemChromiumPath ? {} : { executablePath: undefined }),
-    });
+    return chromium.launch(launchOptions);
   }
 }
 
@@ -399,7 +406,7 @@ export async function captureAreasContaminadasScreenshot(input = {}) {
     const filePath = path.join(DEFAULT_CAPTURE_DIR, fileName);
     await page.screenshot({
       path: filePath,
-      fullPage: true,
+      fullPage: process.env.AREAS_CAPTURE_FULL_PAGE === "true",
       type: "png",
     });
 
