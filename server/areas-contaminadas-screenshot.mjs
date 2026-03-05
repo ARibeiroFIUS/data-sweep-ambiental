@@ -511,7 +511,12 @@ export async function captureAreasContaminadasScreenshot(input = {}) {
     return {
       available: true,
       status: "success",
-      status_reason: searchAttempt.ok ? "captured_after_search" : "captured_with_overlay",
+      status_reason:
+        captureMode === "static_export_fallback"
+          ? "captured_static_export_fallback"
+          : searchAttempt.ok
+          ? "captured_after_search"
+          : "captured_with_overlay",
       message: searchAttempt.ok
         ? captureMode === "static_export_fallback"
           ? "Screenshot gerado por export oficial do MapServer (fallback), com coordenadas do match estruturado."
