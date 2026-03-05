@@ -19,6 +19,9 @@ const OPENAI_FTE_VECTOR_STORE_ID = (
   ""
 )
   .trim();
+const OPENAI_FTE_RAG_TIMEOUT_MS = Number.parseInt(process.env.OPENAI_FTE_RAG_TIMEOUT_MS ?? "18000", 10);
+const OPENAI_FTE_RAG_RETRY_TIMEOUT_MS = Number.parseInt(process.env.OPENAI_FTE_RAG_RETRY_TIMEOUT_MS ?? "0", 10);
+const OPENAI_RELATORIO_TIMEOUT_MS = Number.parseInt(process.env.OPENAI_RELATORIO_TIMEOUT_MS ?? "15000", 10);
 const ORCHESTRATION_VERSION = "2026.03.05.1";
 const SEMIL_AREAS_CONTAMINADAS_APP_ID = "77da778c122c4ccda8a8d6babce61b6b";
 const SEMIL_AREAS_CONTAMINADAS_MAP_OPEN_URL = `https://mapas.semil.sp.gov.br/portal/apps/webappviewer/index.html?id=${SEMIL_AREAS_CONTAMINADAS_APP_ID}`;
@@ -1811,9 +1814,14 @@ async function generateFteDeepCnaeAnalysis({ company }) {
       body: JSON.stringify(requestPayload),
     });
 
-  const primaryTimeout = Number.isFinite(sourceConfig.timeoutMs) ? Math.max(sourceConfig.timeoutMs, 15000) : 60000;
-  const retryTimeoutEnv = Number.parseInt(process.env.OPENAI_FTE_RAG_RETRY_TIMEOUT_MS ?? "120000", 10);
-  const retryTimeout = Number.isFinite(retryTimeoutEnv) && retryTimeoutEnv > primaryTimeout ? retryTimeoutEnv : primaryTimeout;
+  const configuredPrimaryTimeout =
+    Number.isFinite(OPENAI_FTE_RAG_TIMEOUT_MS) && OPENAI_FTE_RAG_TIMEOUT_MS > 0 ? OPENAI_FTE_RAG_TIMEOUT_MS : sourceConfig.timeoutMs;
+  const primaryTimeout = Math.min(30000, Math.max(5000, Number.isFinite(configuredPrimaryTimeout) ? configuredPrimaryTimeout : 18000));
+  const configuredRetryTimeout = Number.isFinite(OPENAI_FTE_RAG_RETRY_TIMEOUT_MS) ? OPENAI_FTE_RAG_RETRY_TIMEOUT_MS : 0;
+  const retryTimeout =
+    configuredRetryTimeout > primaryTimeout
+      ? Math.min(45000, Math.max(primaryTimeout + 1000, configuredRetryTimeout))
+      : primaryTimeout;
 
   let response = await runFteOpenAiRequest(primaryTimeout);
   let retryUsed = false;
@@ -1830,8 +1838,8 @@ async function generateFteDeepCnaeAnalysis({ company }) {
         latencyMs: Date.now() - start,
         statusReason: retryUsed ? "timeout_or_network_after_retry" : "timeout_or_network",
         message: retryUsed
-          ? "OpenAI não respondeu após tentativa principal e retry; fallback determinístico aplicado."
-          : "OpenAI não respondeu no timeout configurado; fallback determinístico aplicado.",
+          ? `OpenAI não respondeu após tentativa principal (${primaryTimeout} ms) e retry (${retryTimeout} ms); fallback determinístico aplicado.`
+          : `OpenAI não respondeu dentro do orçamento de ${primaryTimeout} ms; fallback determinístico aplicado.`,
       }),
     };
   }
@@ -2613,6 +2621,11 @@ async function generateEnvironmentalAiReport({
   const sourceId = "openai_relatorio_ambiental";
   const sourceConfig = resolveSourceConfig(sourceId, "OpenAI - Relatório Ambiental", 45000);
   const start = Date.now();
+  const configuredReportTimeout =
+    Number.isFinite(OPENAI_RELATORIO_TIMEOUT_MS) && OPENAI_RELATORIO_TIMEOUT_MS > 0
+      ? OPENAI_RELATORIO_TIMEOUT_MS
+      : sourceConfig.timeoutMs;
+  const reportTimeoutMs = Math.min(30000, Math.max(5000, Number.isFinite(configuredReportTimeout) ? configuredReportTimeout : 15000));
 
   if (!sourceConfig.enabled) {
     return {
@@ -2677,7 +2690,7 @@ async function generateEnvironmentalAiReport({
     2
   )}`;
 
-  const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", sourceConfig.timeoutMs, {
+  const response = await fetchWithTimeout("https://api.openai.com/v1/chat/completions", reportTimeoutMs, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -2703,6 +2716,7 @@ async function generateEnvironmentalAiReport({
       source: normalizeSourcePayload(sourceId, "unavailable", {
         latencyMs: Date.now() - start,
         statusReason: "timeout_or_network",
+        message: `OpenAI não respondeu dentro do orçamento de ${reportTimeoutMs} ms.`,
       }),
     };
   }

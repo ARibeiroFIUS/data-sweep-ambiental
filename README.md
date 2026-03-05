@@ -104,6 +104,9 @@ Operational backend instructions (Postgres, PGFN sync job, cron e variáveis) es
   - `OPENAI_API_KEY` (habilita o agente final de relatorio IA)
   - `OPENAI_MODEL` (opcional, default `gpt-4o-mini`)
   - `OPENAI_FTE_MODEL` (opcional, default `OPENAI_MODEL`)
+  - `OPENAI_FTE_RAG_TIMEOUT_MS` (opcional, default `18000`; orçamento do agente RAG)
+  - `OPENAI_FTE_RAG_RETRY_TIMEOUT_MS` (opcional, default `0`; retry adicional do RAG)
+  - `OPENAI_RELATORIO_TIMEOUT_MS` (opcional, default `15000`; orçamento do relatório IA)
 
 ## Investigação profunda (PJ -> PF -> PJ)
 
