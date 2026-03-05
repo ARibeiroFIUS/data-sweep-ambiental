@@ -9,10 +9,22 @@ import {
   analyzeEnvironmentalCompliance,
   EnvironmentalHttpError,
 } from "./environmental-compliance.mjs";
+import {
+  ensureEnvironmentalComplianceTables,
+  getEnvironmentalAnalysisRun,
+  isEnvironmentalComplianceStoreEnabled,
+  listActionPlanItems,
+  listEnvironmentalAnalysisRuns,
+  replaceActionPlanItems,
+  saveEnvironmentalAnalysisRun,
+  upsertActionPlanItems,
+} from "./environmental-compliance-store.mjs";
+import { captureAreasContaminadasScreenshot } from "./areas-contaminadas-screenshot.mjs";
 import { generateIntelligenceReport } from "./ai-synthesis.mjs";
 import { runPgfnSyncJob } from "./pgfn-sync.mjs";
 import { recoverStaleJobRuns, getPgfnSourceStatus } from "./source-index-store.mjs";
 import { PGFN_SOURCE_IDS } from "./source-registry.mjs";
+import { fetchWithTimeout } from "./http-utils.mjs";
 import {
   createPartnerSearchQuery,
   createSearchQuery,
@@ -56,6 +68,8 @@ const distDir = path.join(projectRoot, "dist");
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const JOB_ADMIN_TOKEN = (process.env.JOB_ADMIN_TOKEN ?? "").trim();
 let pgfnSyncInFlight = null;
+const ENV_ANALYSIS_CACHE_MAX = 200;
+const environmentalRunCache = new Map();
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -81,6 +95,224 @@ function normalizeCpf(value) {
   return String(value ?? "")
     .replace(/\D/g, "")
     .slice(0, 11);
+}
+
+function normalizeActionPlanStatus(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "em_andamento") return "em_andamento";
+  if (normalized === "concluido") return "concluido";
+  return "pendente";
+}
+
+function normalizeActionPlanPriority(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "alta") return "alta";
+  if (normalized === "baixa") return "baixa";
+  return "media";
+}
+
+function normalizeActionPlanItemsPayload(items) {
+  if (!Array.isArray(items)) return [];
+  const normalized = [];
+  for (const rawItem of items) {
+    const id = String(rawItem?.id ?? "").trim();
+    const title = String(rawItem?.title ?? "").trim();
+    if (!id || !title) continue;
+    normalized.push({
+      id,
+      title: title.slice(0, 400),
+      priority: normalizeActionPlanPriority(rawItem?.priority),
+      owner: rawItem?.owner ? String(rawItem.owner).slice(0, 120) : null,
+      due_date: rawItem?.due_date ? String(rawItem.due_date).slice(0, 10) : null,
+      status: normalizeActionPlanStatus(rawItem?.status),
+      source_refs: Array.isArray(rawItem?.source_refs) ? rawItem.source_refs.map((entry) => String(entry)) : [],
+    });
+  }
+  return normalized;
+}
+
+function cacheEnvironmentalRun(payload) {
+  const analysisId = String(payload?.analysis_id ?? "").trim();
+  if (!analysisId) return;
+  environmentalRunCache.set(analysisId, {
+    analysis_id: analysisId,
+    cnpj: normalizeCnpj(payload?.cnpj),
+    schema_version: payload?.schema_version ?? "br-v1",
+    risk_level: payload?.summary?.risk_level ?? null,
+    analyzed_at: payload?.analyzed_at ?? new Date().toISOString(),
+    created_at: new Date().toISOString(),
+    payload_json: payload,
+  });
+
+  if (environmentalRunCache.size > ENV_ANALYSIS_CACHE_MAX) {
+    const firstKey = environmentalRunCache.keys().next().value;
+    if (firstKey) environmentalRunCache.delete(firstKey);
+  }
+}
+
+function getCachedEnvironmentalRun(analysisId) {
+  return environmentalRunCache.get(String(analysisId ?? "").trim()) ?? null;
+}
+
+function listCachedEnvironmentalRuns({ cnpj = "", page = 1, limit = 20 } = {}) {
+  const normalizedCnpj = normalizeCnpj(cnpj);
+  const safePage = Math.max(1, Number.parseInt(String(page), 10) || 1);
+  const safeLimit = Math.max(1, Math.min(100, Number.parseInt(String(limit), 10) || 20));
+  const entries = [...environmentalRunCache.values()]
+    .filter((entry) => (normalizedCnpj.length === 14 ? entry.cnpj === normalizedCnpj : true))
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  const offset = (safePage - 1) * safeLimit;
+  const paged = entries.slice(offset, offset + safeLimit);
+
+  return {
+    items: paged.map((entry) => ({
+      analysis_id: entry.analysis_id,
+      cnpj: entry.cnpj,
+      schema_version: entry.schema_version,
+      risk_level: entry.risk_level,
+      razao_social: entry?.payload_json?.company?.razao_social ?? null,
+      analyzed_at: entry?.payload_json?.analyzed_at ?? entry.analyzed_at,
+      created_at: entry.created_at,
+    })),
+    page: safePage,
+    limit: safeLimit,
+    total: entries.length,
+  };
+}
+
+function buildPersistenceInfo({ durable }) {
+  const dbConfigured = isEnvironmentalComplianceStoreEnabled();
+  return {
+    mode: durable ? "database" : "memory_cache",
+    durable: Boolean(durable),
+    database_configured: Boolean(dbConfigured),
+  };
+}
+
+function toAsciiText(value) {
+  const text = String(value ?? "");
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function escapePdfText(value) {
+  return String(value ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
+}
+
+function wrapText(value, maxLen = 96) {
+  const words = toAsciiText(value).split(" ");
+  const lines = [];
+  let current = "";
+  for (const word of words) {
+    if (!word) continue;
+    const tentative = current ? `${current} ${word}` : word;
+    if (tentative.length > maxLen) {
+      if (current) lines.push(current);
+      current = word;
+    } else {
+      current = tentative;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length > 0 ? lines : [""];
+}
+
+function buildMinimalPdfBuffer(title, lines) {
+  const safeTitle = toAsciiText(title || "Relatorio de Compliance Ambiental");
+  const normalizedLines = Array.isArray(lines) ? lines.flatMap((line) => wrapText(line, 96)) : [];
+  const pageLines = normalizedLines.slice(0, 120);
+  const contentLines = [
+    "BT",
+    "/F1 12 Tf",
+    "14 TL",
+    "40 800 Td",
+    `(${escapePdfText(safeTitle)}) Tj`,
+    "T*",
+    "T*",
+  ];
+  for (const line of pageLines) {
+    contentLines.push(`(${escapePdfText(toAsciiText(line).slice(0, 180))}) Tj`);
+    contentLines.push("T*");
+  }
+  contentLines.push("ET");
+  const contentStream = `${contentLines.join("\n")}\n`;
+  const contentLength = Buffer.byteLength(contentStream, "binary");
+
+  const objects = [
+    null,
+    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n",
+    "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+    `5 0 obj\n<< /Length ${contentLength} >>\nstream\n${contentStream}endstream\nendobj\n`,
+  ];
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = new Array(objects.length).fill(0);
+  for (let i = 1; i < objects.length; i += 1) {
+    offsets[i] = Buffer.byteLength(pdf, "binary");
+    pdf += objects[i];
+  }
+  const xrefOffset = Buffer.byteLength(pdf, "binary");
+  pdf += `xref\n0 ${objects.length}\n`;
+  pdf += "0000000000 65535 f \n";
+  for (let i = 1; i < objects.length; i += 1) {
+    pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return Buffer.from(pdf, "binary");
+}
+
+function buildComplianceExportLines(payload) {
+  const lines = [];
+  const companyName = payload?.company?.razao_social || "-";
+  const cnpj = payload?.cnpj || "-";
+  const risk = payload?.summary?.risk_level || "-";
+  const alerts = Number(payload?.summary?.total_alerts ?? 0);
+  lines.push(`Empresa: ${companyName}`);
+  lines.push(`CNPJ: ${cnpj}`);
+  lines.push(`Risco agregado: ${String(risk).toUpperCase()} | Alertas: ${alerts}`);
+  lines.push(`Analisado em: ${payload?.analyzed_at || "-"}`);
+  lines.push("");
+  lines.push("DECISAO EXECUTIVA");
+  lines.push(String(payload?.ux_v2?.executive?.decision_summary || "Sem resumo executivo."));
+  lines.push("");
+  lines.push("TOP OBRIGACOES");
+  for (const item of Array.isArray(payload?.ux_v2?.executive?.critical_obligations)
+    ? payload.ux_v2.executive.critical_obligations.slice(0, 6)
+    : []) {
+    lines.push(`- ${item}`);
+  }
+  lines.push("");
+  lines.push("LACUNAS DE COBERTURA");
+  for (const item of Array.isArray(payload?.ux_v2?.executive?.coverage_gaps)
+    ? payload.ux_v2.executive.coverage_gaps.slice(0, 6)
+    : []) {
+    lines.push(`- ${item}`);
+  }
+  lines.push("");
+  lines.push("PLANO DE ACAO");
+  for (const item of Array.isArray(payload?.action_plan?.items) ? payload.action_plan.items.slice(0, 12) : []) {
+    lines.push(
+      `- [${item?.status || "pendente"}] (${item?.priority || "media"}) ${item?.title || "-"} | resp: ${item?.owner || "-"} | prazo: ${
+        item?.due_date || "-"
+      }`
+    );
+  }
+  lines.push("");
+  lines.push("TRILHA DE EVIDENCIAS");
+  for (const item of Array.isArray(payload?.evidence) ? payload.evidence.slice(0, 20) : []) {
+    lines.push(`- ${item?.agent || "-"} | ${item?.jurisdiction || "-"} | ${item?.status || "-"} | ${item?.resumo || "-"}`);
+  }
+  return lines;
 }
 
 function attachSearchMeta(result, searchMeta = {}) {
@@ -812,7 +1044,7 @@ async function maybeGenerateFinalAiAnalysis(payload, deepSummary) {
 function setApiCorsHeaders(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-job-token");
-  res.setHeader("Access-Control-Allow-Methods", "POST, GET, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "POST, GET, PATCH, DELETE, OPTIONS");
 }
 
 function sendJson(res, statusCode, payload) {
@@ -915,6 +1147,153 @@ function requireJobToken(req, res) {
   return true;
 }
 
+const ENV_SOURCE_HEALTH_IDS = [
+  "receita_brasilapi",
+  "receita_opencnpj",
+  "receita_receitaws",
+  "cgu_licitacoes_contratos",
+  "openai_fte_rag",
+  "openai_relatorio_ambiental",
+  "ibama_rule_engine",
+  "sp_cetesb_licenciamento",
+  "sp_consema_municipal",
+  "municipal_licenciamento_generico",
+  "sp_semil_areas_contaminadas_api",
+  "areas_contaminadas_manual_nacional",
+];
+
+const ENV_SOURCE_PROBE_CONFIG = {
+  receita_brasilapi: {
+    url: "https://brasilapi.com.br/api/cnpj/v1/00000000000191",
+  },
+  receita_opencnpj: {
+    url: "https://api.opencnpj.org/v1/cnpj/00000000000191",
+  },
+  receita_receitaws: {
+    url: "https://receitaws.com.br/v1/cnpj/00000000000191",
+  },
+  cgu_licitacoes_contratos: {
+    url: "https://api.portaldatransparencia.gov.br/api-de-dados/contratos/cpf-cnpj?cpfCnpj=00000000000191&pagina=1",
+    needsPortalKey: true,
+  },
+  sp_semil_areas_contaminadas_api: {
+    url: "https://mapas.semil.sp.gov.br/server/rest/services/SIGAM/Empreendimento_Contaminacao_SGP/MapServer/1/query?where=1%3D0&outFields=OBJECTID&f=json",
+  },
+};
+
+function buildSourceHealthSummary(items) {
+  return {
+    total: items.length,
+    up: items.filter((item) => item.status === "up").length,
+    degraded: items.filter((item) => item.status === "degraded").length,
+    down: items.filter((item) => item.status === "down").length,
+    disabled: items.filter((item) => item.status === "disabled").length,
+    manual_required: items.filter((item) => item.status === "manual_required").length,
+  };
+}
+
+async function probeEnvironmentalSourceHealth(sourceId) {
+  const source = SOURCE_REGISTRY[sourceId];
+  const defaultResult = {
+    source_id: sourceId,
+    name: source?.name ?? sourceId,
+    enabled: source ? parseBooleanEnv(process.env[source.featureFlag], true) : true,
+    status: "manual_required",
+    status_reason: "manual_source",
+    latency_ms: 0,
+  };
+
+  if (!source) {
+    return {
+      ...defaultResult,
+      status: "degraded",
+      status_reason: "source_not_registered",
+    };
+  }
+
+  if (!defaultResult.enabled) {
+    return {
+      ...defaultResult,
+      status: "disabled",
+      status_reason: "feature_disabled",
+    };
+  }
+
+  const probe = ENV_SOURCE_PROBE_CONFIG[sourceId];
+  if (!probe) {
+    if (sourceId === "openai_fte_rag" || sourceId === "openai_relatorio_ambiental") {
+      const hasKey = Boolean(String(process.env.OPENAI_API_KEY ?? "").trim());
+      return {
+        ...defaultResult,
+        status: hasKey ? "up" : "degraded",
+        status_reason: hasKey ? "api_key_present" : "missing_api_key",
+      };
+    }
+
+    if (sourceId === "municipal_licenciamento_generico" || sourceId === "areas_contaminadas_manual_nacional") {
+      return {
+        ...defaultResult,
+        status: "manual_required",
+        status_reason: "manual_assisted_flow",
+      };
+    }
+
+    return {
+      ...defaultResult,
+      status: "up",
+      status_reason: "rule_engine_ready",
+    };
+  }
+
+  if (probe.needsPortalKey && !String(process.env.PORTAL_TRANSPARENCIA_API_KEY ?? "").trim()) {
+    return {
+      ...defaultResult,
+      status: "degraded",
+      status_reason: "missing_api_key",
+      checked_via: "credential_check",
+    };
+  }
+
+  const startedAt = Date.now();
+  const headers = { accept: "application/json" };
+  if (probe.needsPortalKey) {
+    headers["chave-api-dados"] = String(process.env.PORTAL_TRANSPARENCIA_API_KEY ?? "").trim();
+  }
+
+  const response = await fetchWithTimeout(probe.url, 4500, {
+    method: "GET",
+    headers,
+  });
+  const latencyMs = Date.now() - startedAt;
+
+  if (!response) {
+    return {
+      ...defaultResult,
+      status: "down",
+      status_reason: "timeout_or_network",
+      latency_ms: latencyMs,
+      checked_via: "http_probe",
+    };
+  }
+
+  const acceptable =
+    response.ok ||
+    response.status === 400 ||
+    response.status === 401 ||
+    response.status === 403 ||
+    response.status === 404 ||
+    response.status === 429;
+
+  return {
+    ...defaultResult,
+    status: acceptable ? "up" : "degraded",
+    status_reason: acceptable ? "http_reachable" : `http_${response.status}`,
+    latency_ms: latencyMs,
+    checked_via: "http_probe",
+    http_status: response.status,
+  };
+}
+
 const server = http.createServer(async (req, res) => {
   const requestUrl = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   const { pathname } = requestUrl;
@@ -922,6 +1301,36 @@ const server = http.createServer(async (req, res) => {
   if (pathname === "/health") {
     sendJson(res, 200, { status: "ok" });
     return;
+  }
+
+  if (pathname === "/api/sources/health") {
+    setApiCorsHeaders(res);
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (req.method !== "GET") {
+      sendJson(res, 405, { error: "Método não permitido" });
+      return;
+    }
+
+    try {
+      const checks = await Promise.all(ENV_SOURCE_HEALTH_IDS.map((sourceId) => probeEnvironmentalSourceHealth(sourceId)));
+      sendJson(res, 200, {
+        schema_version: "sources-health-v1",
+        analyzed_at: new Date().toISOString(),
+        summary: buildSourceHealthSummary(checks),
+        sources: checks,
+      });
+      return;
+    } catch (error) {
+      console.error("[api/sources/health] unexpected error", error);
+      sendJson(res, 500, { error: "Erro interno ao consultar saúde das fontes" });
+      return;
+    }
   }
 
   if (pathname === "/api/environmental-compliance") {
@@ -942,7 +1351,50 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
       const cnpj = typeof body === "object" && body !== null && "cnpj" in body ? body.cnpj : "";
       const payload = await analyzeEnvironmentalCompliance(String(cnpj ?? ""));
-      sendJson(res, 200, payload);
+      const analysisId = crypto.randomUUID();
+      const normalizedActionPlanItems = normalizeActionPlanItemsPayload(payload?.action_plan?.items ?? []);
+      const normalizedPayload = {
+        ...payload,
+        analysis_id: analysisId,
+        action_plan: {
+          items: normalizedActionPlanItems,
+        },
+        persistence: buildPersistenceInfo({ durable: false }),
+      };
+      cacheEnvironmentalRun(normalizedPayload);
+
+      try {
+        const persisted = await saveEnvironmentalAnalysisRun({
+          analysisId,
+          cnpj: normalizedPayload?.cnpj,
+          schemaVersion: normalizedPayload?.schema_version ?? "br-v1",
+          riskLevel: normalizedPayload?.summary?.risk_level ?? null,
+          payload: normalizedPayload,
+        });
+        if (persisted) {
+          normalizedPayload.persistence = buildPersistenceInfo({ durable: true });
+        }
+
+        if (normalizedActionPlanItems.length > 0) {
+          const savedActionPlanItems = await replaceActionPlanItems(analysisId, normalizedActionPlanItems);
+          normalizedPayload.action_plan.items =
+            savedActionPlanItems.length > 0 ? savedActionPlanItems : normalizedActionPlanItems;
+          const persistedAfterActionPlan = await saveEnvironmentalAnalysisRun({
+            analysisId,
+            cnpj: normalizedPayload?.cnpj,
+            schemaVersion: normalizedPayload?.schema_version ?? "br-v1",
+            riskLevel: normalizedPayload?.summary?.risk_level ?? null,
+            payload: normalizedPayload,
+          });
+          if (persistedAfterActionPlan) {
+            normalizedPayload.persistence = buildPersistenceInfo({ durable: true });
+          }
+        }
+      } catch (storeError) {
+        console.error("[api/environmental-compliance] failed to persist run:", storeError);
+      }
+
+      sendJson(res, 200, normalizedPayload);
       return;
     } catch (error) {
       if (error instanceof EnvironmentalHttpError) {
@@ -951,6 +1403,270 @@ const server = http.createServer(async (req, res) => {
       }
       console.error("[api/environmental-compliance] unexpected error", error);
       sendJson(res, 500, { error: "Erro interno ao processar compliance ambiental" });
+      return;
+    }
+  }
+
+  if (pathname === "/api/environmental-compliance/history") {
+    setApiCorsHeaders(res);
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (req.method !== "GET") {
+      sendJson(res, 405, { error: "Método não permitido" });
+      return;
+    }
+
+    try {
+      const cnpj = requestUrl.searchParams.get("cnpj") ?? "";
+      const page = Number.parseInt(requestUrl.searchParams.get("page") ?? "1", 10);
+      const limit = Number.parseInt(requestUrl.searchParams.get("limit") ?? "20", 10);
+      const dbHistory = await listEnvironmentalAnalysisRuns({ cnpj, page, limit });
+      const history = dbHistory.total > 0 ? dbHistory : listCachedEnvironmentalRuns({ cnpj, page, limit });
+      sendJson(res, 200, {
+        schema_version: "br-history-v1",
+        persistence: buildPersistenceInfo({ durable: dbHistory.total > 0 }),
+        ...history,
+      });
+      return;
+    } catch (error) {
+      console.error("[api/environmental-compliance/history] unexpected error", error);
+      sendJson(res, 500, { error: "Erro interno ao consultar histórico ambiental" });
+      return;
+    }
+  }
+
+  const environmentalActionPlanMatch = pathname.match(/^\/api\/environmental-compliance\/([^/]+)\/action-plan$/);
+  if (environmentalActionPlanMatch) {
+    setApiCorsHeaders(res);
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (req.method !== "PATCH") {
+      sendJson(res, 405, { error: "Método não permitido" });
+      return;
+    }
+
+    const analysisId = decodeURIComponent(environmentalActionPlanMatch[1]);
+    try {
+      const body = await readJsonBody(req);
+      const items = normalizeActionPlanItemsPayload(body?.items);
+      if (items.length === 0) {
+        sendJson(res, 400, { error: "Informe action_plan.items com pelo menos 1 item válido." });
+        return;
+      }
+
+      const dbRun = await getEnvironmentalAnalysisRun(analysisId);
+      const currentRun = dbRun ?? getCachedEnvironmentalRun(analysisId);
+      if (!currentRun) {
+        sendJson(res, 404, { error: "Análise ambiental não encontrada." });
+        return;
+      }
+
+      const currentPayload =
+        currentRun.payload_json && typeof currentRun.payload_json === "object" ? currentRun.payload_json : {};
+      const currentItems = normalizeActionPlanItemsPayload(currentPayload?.action_plan?.items);
+      const mergedMap = new Map(currentItems.map((item) => [item.id, item]));
+      for (const item of items) {
+        mergedMap.set(item.id, { ...mergedMap.get(item.id), ...item });
+      }
+      const mergedItems = [...mergedMap.values()];
+      const updatedItems = await upsertActionPlanItems(analysisId, items);
+      const nextItems = updatedItems.length > 0 ? updatedItems : mergedItems;
+      const nextPayload = {
+        ...currentPayload,
+        analysis_id: analysisId,
+        action_plan: {
+          items: nextItems,
+        },
+        persistence: buildPersistenceInfo({ durable: Boolean(dbRun) }),
+      };
+      cacheEnvironmentalRun(nextPayload);
+
+      await saveEnvironmentalAnalysisRun({
+        analysisId,
+        cnpj: currentRun.cnpj,
+        schemaVersion: currentRun.schema_version ?? "br-v1",
+        riskLevel: currentRun.risk_level ?? nextPayload?.summary?.risk_level ?? null,
+        payload: nextPayload,
+      });
+
+      sendJson(res, 200, {
+        analysis_id: analysisId,
+        persistence: buildPersistenceInfo({ durable: Boolean(dbRun) }),
+        action_plan: {
+          items: nextItems,
+        },
+      });
+      return;
+    } catch (error) {
+      console.error("[api/environmental-compliance/:analysis_id/action-plan] unexpected error", error);
+      sendJson(res, 500, { error: "Erro interno ao atualizar plano de ação" });
+      return;
+    }
+  }
+
+  const environmentalExportPdfMatch = pathname.match(/^\/api\/environmental-compliance\/([^/]+)\/export\.pdf$/);
+  if (environmentalExportPdfMatch) {
+    setApiCorsHeaders(res);
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (req.method !== "GET") {
+      sendJson(res, 405, { error: "Método não permitido" });
+      return;
+    }
+
+    const analysisId = decodeURIComponent(environmentalExportPdfMatch[1]);
+    try {
+      const dbRow = await getEnvironmentalAnalysisRun(analysisId);
+      const row = dbRow ?? getCachedEnvironmentalRun(analysisId);
+      if (!row) {
+        sendJson(res, 404, { error: "Análise ambiental não encontrada." });
+        return;
+      }
+
+      const payload = row.payload_json && typeof row.payload_json === "object" ? row.payload_json : {};
+      const actionPlanItems = await listActionPlanItems(analysisId);
+      const exportPayload = {
+        ...payload,
+        analysis_id: analysisId,
+        persistence: buildPersistenceInfo({ durable: Boolean(dbRow) }),
+        action_plan: {
+          items: actionPlanItems.length > 0 ? actionPlanItems : normalizeActionPlanItemsPayload(payload?.action_plan?.items),
+        },
+      };
+      const lines = buildComplianceExportLines(exportPayload);
+      const pdfBuffer = buildMinimalPdfBuffer(
+        `Compliance Ambiental - ${exportPayload?.company?.razao_social || exportPayload?.cnpj || analysisId}`,
+        lines
+      );
+      const fileName = `compliance-ambiental-${String(exportPayload?.cnpj || analysisId).replace(/\W+/g, "")}.pdf`;
+      res.writeHead(200, {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Content-Length": String(pdfBuffer.byteLength),
+      });
+      res.end(pdfBuffer);
+      return;
+    } catch (error) {
+      console.error("[api/environmental-compliance/:analysis_id/export.pdf] unexpected error", error);
+      sendJson(res, 500, { error: "Erro interno ao exportar PDF" });
+      return;
+    }
+  }
+
+  const environmentalGetMatch = pathname.match(/^\/api\/environmental-compliance\/([^/]+)$/);
+  if (environmentalGetMatch) {
+    setApiCorsHeaders(res);
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (req.method !== "GET") {
+      sendJson(res, 405, { error: "Método não permitido" });
+      return;
+    }
+
+    const analysisId = decodeURIComponent(environmentalGetMatch[1]);
+    try {
+      const dbRow = await getEnvironmentalAnalysisRun(analysisId);
+      const row = dbRow ?? getCachedEnvironmentalRun(analysisId);
+      if (!row) {
+        sendJson(res, 404, { error: "Análise ambiental não encontrada." });
+        return;
+      }
+
+      const payload = row.payload_json && typeof row.payload_json === "object" ? row.payload_json : {};
+      const actionPlanItems = await listActionPlanItems(analysisId);
+      const normalizedItems =
+        actionPlanItems.length > 0 ? actionPlanItems : normalizeActionPlanItemsPayload(payload?.action_plan?.items);
+      const normalizedPayload = {
+        ...payload,
+        analysis_id: analysisId,
+        persistence: buildPersistenceInfo({ durable: Boolean(dbRow) }),
+        action_plan: {
+          items: normalizedItems,
+        },
+      };
+      sendJson(res, 200, normalizedPayload);
+      return;
+    } catch (error) {
+      console.error("[api/environmental-compliance/:analysis_id] unexpected error", error);
+      sendJson(res, 500, { error: "Erro interno ao consultar análise ambiental" });
+      return;
+    }
+  }
+
+  if (pathname === "/api/areas-contaminadas/screenshot") {
+    setApiCorsHeaders(res);
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "Método não permitido" });
+      return;
+    }
+
+    try {
+      const body = await readJsonBody(req);
+      const mapUrl = typeof body?.map_url === "string" ? body.map_url : "";
+      const razaoSocial = typeof body?.razao_social === "string" ? body.razao_social : "";
+      const cnpj = typeof body?.cnpj === "string" ? body.cnpj : "";
+      const includeBase64 = typeof body?.include_base64 === "boolean" ? body.include_base64 : true;
+
+      if (!mapUrl && !cnpj) {
+        sendJson(res, 400, {
+          error: "Informe map_url ou cnpj para capturar screenshot de areas contaminadas.",
+        });
+        return;
+      }
+
+      let resolvedMapUrl = mapUrl;
+      let resolvedRazaoSocial = razaoSocial;
+      let resolvedCnpj = cnpj;
+
+      if (!resolvedMapUrl && cnpj) {
+        const analysis = await analyzeEnvironmentalCompliance(cnpj);
+        resolvedMapUrl = String(analysis?.areas_contaminadas?.official_map_open_url ?? "");
+        resolvedRazaoSocial = resolvedRazaoSocial || String(analysis?.company?.razao_social ?? "");
+        resolvedCnpj = resolvedCnpj || String(analysis?.cnpj ?? "");
+      }
+
+      const capture = await captureAreasContaminadasScreenshot({
+        mapUrl: resolvedMapUrl,
+        razaoSocial: resolvedRazaoSocial,
+        cnpj: resolvedCnpj,
+        includeBase64,
+      });
+
+      sendJson(res, 200, {
+        schema_version: "areas-screenshot-v1",
+        capture,
+      });
+      return;
+    } catch (error) {
+      console.error("[api/areas-contaminadas/screenshot] unexpected error", error);
+      sendJson(res, 500, { error: "Erro interno ao capturar screenshot de areas contaminadas" });
       return;
     }
   }
@@ -1865,6 +2581,12 @@ server.listen(port, "0.0.0.0", () => {
       if (ok) console.log("[startup] Score history table ensured");
     })
     .catch((e) => console.error("[startup] ensureScoreHistoryTable error:", e));
+
+  ensureEnvironmentalComplianceTables()
+    .then((ok) => {
+      if (ok) console.log("[startup] Environmental compliance tables ensured");
+    })
+    .catch((e) => console.error("[startup] ensureEnvironmentalComplianceTables error:", e));
 
   if (MONITOR_JOB_ENABLED) {
     setTimeout(() => {

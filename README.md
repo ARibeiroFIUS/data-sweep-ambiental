@@ -89,11 +89,17 @@ Operational backend instructions (Postgres, PGFN sync job, cron e variáveis) es
 ## Compliance Ambiental (multiagentes)
 
 - Endpoint: `POST /api/environmental-compliance`
-- Fluxo atual: CNPJ/CNAE -> IBAMA -> CETESB -> Municipal -> Areas Contaminadas -> Relatorio IA (ultimo agente)
+- Endpoint de evidência visual (robô Playwright): `POST /api/areas-contaminadas/screenshot`
+- Healthcheck de fontes: `GET /api/sources/health`
+- Fluxo atual (7 agentes): CNPJ/CNAE -> RAG CNAE x FTE -> Federal -> Estadual -> Municipal -> Areas Contaminadas -> Relatorio IA auditavel
+- Schema de resposta atual: `schema_version: "br-v1"`
+- Campos-chave de auditoria: `jurisdiction_context`, `coverage`, `evidence`, `areas_contaminadas` (estruturado + embed oficial)
 - Variaveis recomendadas:
   - `PORTAL_TRANSPARENCIA_API_KEY` (gov.br)
+  - `OPENAI_FTE_VECTOR_STORE_ID` (RAG CNAE x FTE)
   - `OPENAI_API_KEY` (habilita o agente final de relatorio IA)
   - `OPENAI_MODEL` (opcional, default `gpt-4o-mini`)
+  - `OPENAI_FTE_MODEL` (opcional, default `OPENAI_MODEL`)
 
 ## Investigação profunda (PJ -> PF -> PJ)
 

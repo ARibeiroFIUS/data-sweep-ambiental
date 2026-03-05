@@ -10,6 +10,12 @@ export interface EnvironmentalCompany {
   cnpj: string;
   situacao: string;
   endereco: string;
+  municipio?: string;
+  uf?: string;
+  bairro?: string;
+  logradouro?: string;
+  numero?: string;
+  cep?: string;
   cnaes: EnvironmentalCnae[];
   source: string;
 }
@@ -123,7 +129,7 @@ export interface MunicipalMatch {
   risco: "alto" | "medio" | "baixo";
 }
 
-export interface MunicipalResult {
+export interface MunicipalLegacyResult {
   enquadrado: boolean;
   matches: MunicipalMatch[];
   legislacao: {
@@ -134,41 +140,73 @@ export interface MunicipalResult {
   nota: string;
 }
 
-export interface AreaSystem {
-  nome: string;
-  url: string;
-  descricao: string;
-  tipo: "geo" | "lista" | "relatorio";
+export interface AreaMatch {
+  match_id: string;
+  layer_id: number;
+  layer_name: string;
+  strategy: string;
+  score: number;
+  risco: "alto" | "medio" | "baixo";
+  empreendimento: string | null;
+  atividade: string | null;
+  classificacao: string | null;
+  endereco: string | null;
+  municipio: string | null;
+  cep: string | null;
+  nis: string | null;
+  sigla_dg: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface AreasContaminadasResult {
-  instrucao: string;
-  sistemas: AreaSystem[];
-  legislacao: {
-    lei_estadual: string;
-    decreto: string;
-    it_cetesb: string;
-  };
-  alerta: string;
-}
-
-export interface EnvironmentalSummary {
-  total_alerts: number;
-  fte_alerts: number;
-  ibama_alerts: number;
-  cetesb_alerts: number;
-  municipal_alerts: number;
-  risk_level: "baixo" | "medio" | "alto";
-}
-
-export interface EnvironmentalAiReport {
   available: boolean;
-  narrative?: string;
-  model?: string;
-  reason?: string;
-  input_tokens?: number;
-  output_tokens?: number;
-  generated_at?: string;
+  method: "api_match" | "dataset_match" | "manual_required";
+  status: string;
+  summary: string;
+  matches: AreaMatch[];
+  official_map_embed_url: string;
+  official_map_open_url: string;
+  evidence_refs: string[];
+  limitations: string[];
+}
+
+export interface AreasContaminadasScreenshotCapture {
+  available: boolean;
+  status: "success" | "error";
+  status_reason: string;
+  message?: string;
+  map_url: string;
+  file_name: string | null;
+  file_path: string | null;
+  mime_type: string;
+  bytes: number;
+  image_base64: string | null;
+  captured_at: string;
+  latency_ms: number;
+}
+
+export interface NationalStateResult {
+  scope: "estadual";
+  uf: string | null;
+  mode: "api_ready" | "manual_required";
+  source_id: string;
+  available: boolean;
+  details: CetesbResult;
+  obligations: string[];
+  nota: string;
+}
+
+export interface NationalMunicipalResult {
+  scope: "municipal";
+  uf: string | null;
+  municipio_nome: string | null;
+  mode: "api_ready" | "manual_required";
+  source_id: string;
+  available: boolean;
+  details: MunicipalLegacyResult;
+  obligations: string[];
+  nota: string;
 }
 
 export interface GovBrContractSample {
@@ -183,6 +221,146 @@ export interface GovBrContext {
   consulted: boolean;
   found_records: number;
   sample: GovBrContractSample[];
+}
+
+export interface FederalResult {
+  scope: "federal";
+  ibama: IbamaResult;
+  fte_rag: {
+    available: boolean;
+    stats: FteDeepAnalysis["stats"] | null;
+    overall_recommendations: string[];
+  };
+  govbr_context: GovBrContext | null;
+  obligations: string[];
+}
+
+export interface EvidenceRuleApplied {
+  base_legal: string[];
+  condicao: string;
+  severidade: string;
+  obrigacao_resultante: string;
+}
+
+export interface EvidenceRecord {
+  id: string;
+  at: string;
+  agent: string;
+  source_id: string | null;
+  source_name: string | null;
+  jurisdiction: string;
+  rule_id: string | null;
+  regra_aplicada: EvidenceRuleApplied | null;
+  status: string;
+  confianca: "alta" | "media" | "baixa";
+  resumo: string;
+  input_hash: string;
+  output_hash: string;
+}
+
+export interface JurisdictionContext {
+  uf: string | null;
+  municipio_ibge: string | null;
+  municipio_nome: string | null;
+  scope_mode: "national";
+}
+
+export interface CoverageSphere {
+  status: "api_ready" | "manual_required";
+  mode: string;
+  sources: string[];
+}
+
+export interface CoverageMatrix {
+  scope_mode: "national";
+  jurisdiction: {
+    uf: string | null;
+    municipio_ibge: string | null;
+    municipio_nome: string | null;
+  };
+  federal: CoverageSphere;
+  state: CoverageSphere;
+  municipal: CoverageSphere;
+  ambiental_territorial: CoverageSphere;
+}
+
+export interface EnvironmentalSummary {
+  total_alerts: number;
+  fte_alerts: number;
+  ibama_alerts: number;
+  state_alerts: number;
+  municipal_alerts: number;
+  areas_alerts: number;
+  cetesb_alerts: number;
+  by_sphere: {
+    federal: number;
+    estadual: number;
+    municipal: number;
+    ambiental_territorial: number;
+  };
+  coverage_status: {
+    federal: string | null;
+    state: string | null;
+    municipal: string | null;
+    ambiental_territorial: string | null;
+  };
+  risk_level: "baixo" | "medio" | "alto";
+}
+
+export interface ExecutiveTopRisk {
+  sphere: "federal" | "estadual" | "municipal" | "ambiental_territorial" | string;
+  severity: "alto" | "medio" | "baixo" | string;
+  title: string;
+  detail: string;
+}
+
+export interface EnvironmentalUxV2 {
+  executive: {
+    decision_summary: string;
+    critical_obligations: string[];
+    coverage_gaps: string[];
+    top_risks: ExecutiveTopRisk[];
+  };
+  audit: {
+    confidence_map: {
+      alta: number;
+      media: number;
+      baixa: number;
+    };
+    evidence_index: {
+      total: number;
+      by_agent: Record<string, number>;
+      by_source: Record<string, number>;
+    };
+    fallback_flags: string[];
+  };
+}
+
+export type ActionPlanStatus = "pendente" | "em_andamento" | "concluido";
+export type ActionPlanPriority = "alta" | "media" | "baixa";
+
+export interface EnvironmentalActionPlanItem {
+  id: string;
+  title: string;
+  priority: ActionPlanPriority;
+  owner: string | null;
+  due_date: string | null;
+  status: ActionPlanStatus;
+  source_refs: string[];
+}
+
+export interface EnvironmentalActionPlan {
+  items: EnvironmentalActionPlanItem[];
+}
+
+export interface EnvironmentalAiReport {
+  available: boolean;
+  narrative?: string;
+  model?: string;
+  reason?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  generated_at?: string;
 }
 
 export interface OrchestrationStep {
@@ -215,14 +393,31 @@ export interface EnvironmentalOrchestration {
 }
 
 export interface EnvironmentalComplianceResult {
+  schema_version: "br-v1" | string;
+  analysis_id?: string;
+  persistence?: {
+    mode: "database" | "memory_cache";
+    durable: boolean;
+    database_configured: boolean;
+  };
   cnpj: string;
+  jurisdiction_context: JurisdictionContext;
   company: EnvironmentalCompany;
+  federal: FederalResult;
+  state: NationalStateResult;
+  municipal: NationalMunicipalResult;
+  areas_contaminadas: AreasContaminadasResult;
+  coverage: CoverageMatrix;
+  evidence: EvidenceRecord[];
+  source_catalog?: Record<string, unknown>;
+  rule_catalog?: Record<string, unknown>;
   fte_deep_analysis: FteDeepAnalysis;
   ibama: IbamaResult;
   cetesb: CetesbResult;
-  municipal: MunicipalResult;
-  areas_contaminadas: AreasContaminadasResult;
+  municipal_legacy?: MunicipalLegacyResult;
   ai_report: EnvironmentalAiReport;
+  ux_v2?: EnvironmentalUxV2;
+  action_plan?: EnvironmentalActionPlan;
   govbr_context: GovBrContext | null;
   summary: EnvironmentalSummary;
   orchestration: EnvironmentalOrchestration;

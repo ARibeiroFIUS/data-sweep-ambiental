@@ -1,4 +1,7 @@
+import { createHash } from "node:crypto";
 import { fetchWithTimeout } from "./http-utils.mjs";
+import { buildCoverageMatrix, getEnvironmentalSourceCatalog } from "./environmental-source-catalog.mjs";
+import { findRuleById, getEnvironmentalRuleCatalog } from "./environmental-rule-catalog.mjs";
 import { getSourceConfig, isSourceEnabled } from "./source-registry.mjs";
 
 const BRASILAPI_BASE_URL = (process.env.BRASILAPI_BASE_URL ?? "https://brasilapi.com.br").trim().replace(/\/$/, "");
@@ -17,6 +20,12 @@ const OPENAI_FTE_VECTOR_STORE_ID = (
 )
   .trim();
 const ORCHESTRATION_VERSION = "2026.03.05.1";
+const SEMIL_AREAS_CONTAMINADAS_APP_ID = "77da778c122c4ccda8a8d6babce61b6b";
+const SEMIL_AREAS_CONTAMINADAS_MAP_OPEN_URL = `https://mapas.semil.sp.gov.br/portal/apps/webappviewer/index.html?id=${SEMIL_AREAS_CONTAMINADAS_APP_ID}`;
+const SEMIL_AREAS_CONTAMINADAS_MAP_EMBED_URL = SEMIL_AREAS_CONTAMINADAS_MAP_OPEN_URL;
+const SEMIL_AREAS_CONTAMINADAS_SERVICE_BASE =
+  "https://mapas.semil.sp.gov.br/server/rest/services/SIGAM/Empreendimento_Contaminacao_SGP/MapServer";
+const SEMIL_AREAS_LAYER_IDS = [1, 2];
 
 const FTE_CATEGORIES = [
   {
@@ -503,6 +512,12 @@ function normalizeCnpj(value) {
   return cleanDigits(value).slice(0, 14);
 }
 
+function normalizeCep(value) {
+  const digits = cleanDigits(value);
+  if (!digits) return "";
+  return digits.slice(0, 8);
+}
+
 function normalizeCnaeCode(value) {
   return String(value ?? "").replace(/\D/g, "");
 }
@@ -513,6 +528,10 @@ function normalizeText(value) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+}
+
+function hashObject(value) {
+  return createHash("sha256").update(JSON.stringify(value ?? null)).digest("hex").slice(0, 24);
 }
 
 function buildAddress(parts) {
@@ -647,6 +666,12 @@ function extractOpenCnpjCnaes(payload) {
 
 function normalizeCompanyFromBrasilApi(payload, cnpj) {
   const cnaes = normalizeCnaeListFromBrasilApi(payload);
+  const municipio = String(payload?.municipio ?? "").trim();
+  const uf = String(payload?.uf ?? "").trim().toUpperCase();
+  const bairro = String(payload?.bairro ?? "").trim();
+  const logradouro = String(payload?.logradouro ?? "").trim();
+  const numero = String(payload?.numero ?? "").trim();
+  const cep = normalizeCep(payload?.cep ?? payload?.cep_formatado);
   return {
     razao_social: String(payload?.razao_social ?? payload?.nome_fantasia ?? "").trim(),
     nome_fantasia: String(payload?.nome_fantasia ?? "").trim(),
@@ -659,6 +684,12 @@ function normalizeCompanyFromBrasilApi(payload, cnpj) {
       municipio: payload?.municipio,
       uf: payload?.uf,
     }),
+    municipio,
+    uf,
+    bairro,
+    logradouro,
+    numero,
+    cep,
     cnaes,
     source: "BrasilAPI",
   };
@@ -668,6 +699,12 @@ function normalizeCompanyFromOpenCnpj(payload, cnpj) {
   const estabelecimento = payload?.estabelecimento && typeof payload.estabelecimento === "object" ? payload.estabelecimento : payload;
   const companyRoot = payload?.empresa && typeof payload.empresa === "object" ? payload.empresa : payload;
   const cnaes = extractOpenCnpjCnaes(payload);
+  const municipio = String(estabelecimento?.cidade ?? estabelecimento?.municipio ?? "").trim();
+  const uf = String(estabelecimento?.estado ?? estabelecimento?.uf ?? "").trim().toUpperCase();
+  const bairro = String(estabelecimento?.bairro ?? "").trim();
+  const logradouro = String(estabelecimento?.logradouro ?? "").trim();
+  const numero = String(estabelecimento?.numero ?? "").trim();
+  const cep = normalizeCep(estabelecimento?.cep);
 
   return {
     razao_social: String(companyRoot?.razao_social ?? companyRoot?.razaoSocial ?? payload?.razao_social ?? "").trim(),
@@ -681,6 +718,12 @@ function normalizeCompanyFromOpenCnpj(payload, cnpj) {
       municipio: estabelecimento?.cidade ?? estabelecimento?.municipio,
       uf: estabelecimento?.estado ?? estabelecimento?.uf,
     }),
+    municipio,
+    uf,
+    bairro,
+    logradouro,
+    numero,
+    cep,
     cnaes,
     source: "OpenCNPJ",
   };
@@ -699,6 +742,12 @@ function normalizeCompanyFromReceitaWs(payload, cnpj) {
     const normalized = toCodeTextPair(item, false);
     if (normalized) cnaes.push(normalized);
   }
+  const municipio = String(payload?.municipio ?? "").trim();
+  const uf = String(payload?.uf ?? "").trim().toUpperCase();
+  const bairro = String(payload?.bairro ?? "").trim();
+  const logradouro = String(payload?.logradouro ?? "").trim();
+  const numero = String(payload?.numero ?? "").trim();
+  const cep = normalizeCep(payload?.cep);
 
   return {
     razao_social: String(payload?.nome ?? payload?.razao_social ?? "").trim(),
@@ -712,6 +761,12 @@ function normalizeCompanyFromReceitaWs(payload, cnpj) {
       municipio: payload?.municipio,
       uf: payload?.uf,
     }),
+    municipio,
+    uf,
+    bairro,
+    logradouro,
+    numero,
+    cep,
     cnaes,
     source: "ReceitaWS",
   };
@@ -754,6 +809,18 @@ function normalizeSourcePayload(sourceId, status, data = {}, fallbackName = "") 
   };
 }
 
+function upsertSourcePayload(list, source) {
+  if (!source || typeof source !== "object") return Array.isArray(list) ? list : [];
+  const items = Array.isArray(list) ? [...list] : [];
+  const index = items.findIndex((entry) => entry?.id === source.id);
+  if (index >= 0) {
+    items[index] = { ...items[index], ...source };
+    return items;
+  }
+  items.push(source);
+  return items;
+}
+
 function createOrchestration(cnpj) {
   return {
     version: ORCHESTRATION_VERSION,
@@ -764,11 +831,11 @@ function createOrchestration(cnpj) {
     steps: [
       { agent: "agent_1_cnpj_cnae", title: "Consulta CNPJ/CNAE", status: "pending", started_at: null, completed_at: null },
       { agent: "agent_2_fte_rag_cnae", title: "Analise Profunda CNAE x FTE (RAG)", status: "pending", started_at: null, completed_at: null },
-      { agent: "agent_3_ibama_fte", title: "IBAMA/CTF/FTE", status: "pending", started_at: null, completed_at: null },
-      { agent: "agent_4_cetesb_sp", title: "CETESB (SP)", status: "pending", started_at: null, completed_at: null },
-      { agent: "agent_5_municipal", title: "Municipal", status: "pending", started_at: null, completed_at: null },
+      { agent: "agent_3_ibama_fte", title: "Regras Federais (IBAMA/CTF/FTE)", status: "pending", started_at: null, completed_at: null },
+      { agent: "agent_4_state", title: "Regras Estaduais (UF)", status: "pending", started_at: null, completed_at: null },
+      { agent: "agent_5_municipal", title: "Regras Municipais", status: "pending", started_at: null, completed_at: null },
       { agent: "agent_6_areas_contaminadas", title: "Areas Contaminadas", status: "pending", started_at: null, completed_at: null },
-      { agent: "agent_7_relatorio_ai", title: "Relatorio IA", status: "pending", started_at: null, completed_at: null },
+      { agent: "agent_7_relatorio_ai", title: "Relatorio IA Auditavel", status: "pending", started_at: null, completed_at: null },
     ],
     events: [],
   };
@@ -802,6 +869,51 @@ function updateOrchestrationStep(orchestration, agentId, status, data = {}) {
   if (data.summary && typeof data.summary === "object") step.summary = data.summary;
 
   pushOrchestrationEvent(orchestration, agentId, status, data.message ?? "", data.summary ?? null);
+}
+
+function buildJurisdictionContext(company) {
+  return {
+    uf: String(company?.uf ?? "").trim().toUpperCase() || null,
+    municipio_ibge: null,
+    municipio_nome: String(company?.municipio ?? "").trim() || null,
+    scope_mode: "national",
+  };
+}
+
+function buildEvidenceRecord({
+  agent,
+  source,
+  jurisdiction,
+  ruleId = null,
+  status = "success",
+  confidence = "media",
+  summary = "",
+  input = null,
+  output = null,
+}) {
+  const rule = ruleId ? findRuleById(ruleId) : null;
+  return {
+    id: `ev_${hashObject({ agent, source, ruleId, summary, at: Date.now() })}`,
+    at: new Date().toISOString(),
+    agent,
+    source_id: source?.id ?? null,
+    source_name: source?.name ?? null,
+    jurisdiction: jurisdiction ?? "federal",
+    rule_id: rule?.rule_id ?? ruleId ?? null,
+    regra_aplicada: rule
+      ? {
+          base_legal: Array.isArray(rule.base_legal) ? rule.base_legal : [],
+          condicao: rule.condicao ?? "",
+          severidade: rule.severidade ?? "",
+          obrigacao_resultante: rule.obrigacao_resultante ?? "",
+        }
+      : null,
+    status,
+    confianca: confidence,
+    resumo: String(summary ?? "").trim(),
+    input_hash: hashObject(input),
+    output_hash: hashObject(output),
+  };
 }
 
 async function fetchCompanyFromBrasilApi(cnpj) {
@@ -1336,6 +1448,119 @@ function normalizeFteDeepAnalysisPayload(raw, cnaes, fallbackText = "") {
   };
 }
 
+function matchFteCategoryForCnae(cnae) {
+  const code = normalizeCnaeCode(cnae?.codigo);
+  const prefix2 = code.slice(0, 2);
+  const prefix3 = code.slice(0, 3);
+  const description = normalizeText(cnae?.descricao);
+
+  for (const category of FTE_CATEGORIES) {
+    const matchedByPrefix = category.cnae_prefixes.some((prefix) => {
+      const cleanPrefix = normalizeCnaeCode(prefix);
+      return cleanPrefix && (code.startsWith(cleanPrefix) || prefix2 === cleanPrefix || prefix3 === cleanPrefix);
+    });
+    if (matchedByPrefix) {
+      return { category, matchType: "prefix" };
+    }
+  }
+
+  if (description) {
+    for (const category of FTE_CATEGORIES) {
+      const matchedByKeyword = category.keywords.some((keyword) => description.includes(normalizeText(keyword)));
+      if (matchedByKeyword) {
+        return { category, matchType: "keyword" };
+      }
+    }
+  }
+
+  return null;
+}
+
+function buildFteDeterministicFallbackAnalysis(cnaes, reason) {
+  const items = Array.isArray(cnaes) ? cnaes : [];
+  const findings = items.map((cnae) => {
+    const match = matchFteCategoryForCnae(cnae);
+    const category = match?.category;
+    const isPrefixMatch = match?.matchType === "prefix";
+    const isKeywordMatch = match?.matchType === "keyword";
+
+    return normalizeFteDeepFinding(
+      {
+        cnae_codigo: cnae?.codigo ?? "",
+        cnae_descricao: cnae?.descricao ?? "",
+        principal: Boolean(cnae?.principal),
+        risco: isPrefixMatch ? "medio" : isKeywordMatch ? "baixo" : "nao_classificado",
+        probabilidade_enquadramento: isPrefixMatch ? "media" : isKeywordMatch ? "baixa" : "indefinida",
+        tese_enquadramento: category
+          ? `Pre-analise deterministica indica aderencia com Cat. ${category.id} (${category.name}) do CTF/APP; confirmar FTE especifica com RAG/consulta oficial.`
+          : "Sem aderencia deterministica clara para CNAE x FTE nesta execucao.",
+        obrigacoes: category
+          ? [
+              "Validar enquadramento na FTE especifica do IBAMA.",
+              "Confirmar obrigacao de inscricao no CTF/APP conforme atividade efetivamente exercida.",
+            ]
+          : [],
+        riscos_juridicos: category
+          ? [
+              "Risco regulatorio por subenquadramento ou enquadramento incompleto sem validacao tecnica.",
+            ]
+          : [],
+        recomendacoes_acao: category
+          ? [
+              "Executar revisao tecnica CNAE x FTE com evidencias oficiais.",
+              "Registrar racional de enquadramento e anexar FTEs citadas ao dossie de compliance.",
+            ]
+          : ["Executar analise RAG/tecnica para concluir o enquadramento com evidencias."],
+        lacunas: [
+          `Analise RAG indisponivel nesta tentativa (${reason || "motivo nao informado"}).`,
+          "Necessaria confirmacao da FTE especifica com evidencias textuais oficiais.",
+        ],
+        ftes_relacionadas: category
+          ? [
+              {
+                codigo: String(category.id),
+                titulo: `Cat. ${category.id} - ${category.name}`,
+                categoria: category.name,
+                justificativa:
+                  match?.matchType === "prefix"
+                    ? "Match preliminar por prefixo CNAE."
+                    : "Match preliminar por similaridade textual da descricao.",
+                url: "https://www.gov.br/ibama/pt-br/servicos/cadastros/ctf/ctf-app/ftes/ftes-por-categorias",
+              },
+            ]
+          : [],
+      },
+      cnae
+    );
+  });
+
+  const highRiskFindings = findings.filter((item) => item.risco === "alto").length;
+  const mediumRiskFindings = findings.filter((item) => item.risco === "medio").length;
+  const lowRiskFindings = findings.filter((item) => item.risco === "baixo").length;
+
+  return {
+    available: false,
+    reason,
+    fallback_mode: "deterministic_rule_fallback",
+    executive_summary:
+      "A analise profunda CNAE x FTE por RAG nao foi concluida nesta tentativa. Foi aplicada pre-analise deterministica para nao deixar lacunas no painel, exigindo validacao posterior com evidencias RAG.",
+    findings,
+    overall_recommendations: [
+      "Reexecutar o agente RAG para obter citacoes textuais das FTEs.",
+      "Validar manualmente os CNAEs com maior aderencia preliminar no portal oficial do IBAMA.",
+    ],
+    legal_risks: [
+      "Conclusoes desta etapa sao preliminares quando o RAG esta indisponivel.",
+    ],
+    stats: {
+      total_findings: findings.length,
+      high_risk_findings: highRiskFindings,
+      medium_risk_findings: mediumRiskFindings,
+      low_risk_findings: lowRiskFindings,
+    },
+  };
+}
+
 function extractGovBrContractSample(records) {
   if (!Array.isArray(records)) return [];
   return records.slice(0, 3).map((record) => ({
@@ -1460,10 +1685,7 @@ async function generateFteDeepCnaeAnalysis({ company }) {
 
   if (!sourceConfig.enabled) {
     return {
-      analysis: {
-        available: false,
-        reason: "feature_disabled",
-      },
+      analysis: buildFteDeterministicFallbackAnalysis(cnaes, "feature_disabled"),
       source: normalizeSourcePayload(sourceId, "unavailable", {
         latencyMs: Date.now() - start,
         statusReason: "feature_disabled",
@@ -1472,39 +1694,33 @@ async function generateFteDeepCnaeAnalysis({ company }) {
   }
 
   if (!OPENAI_API_KEY) {
+    const fallbackAnalysis = buildFteDeterministicFallbackAnalysis(cnaes, "OPENAI_API_KEY nao configurada.");
     return {
-      analysis: {
-        available: false,
-        reason: "OPENAI_API_KEY nao configurada.",
-      },
+      analysis: fallbackAnalysis,
       source: normalizeSourcePayload(sourceId, "unavailable", {
         latencyMs: Date.now() - start,
         statusReason: "missing_api_key",
-        message: "Configure OPENAI_API_KEY para habilitar analise CNAE x FTE com RAG.",
+        message: "Configure OPENAI_API_KEY para habilitar analise CNAE x FTE com RAG. Fallback deterministico aplicado nesta execucao.",
       }),
     };
   }
 
   if (!OPENAI_FTE_VECTOR_STORE_ID) {
+    const fallbackAnalysis = buildFteDeterministicFallbackAnalysis(cnaes, "OPENAI_FTE_VECTOR_STORE_ID nao configurada.");
     return {
-      analysis: {
-        available: false,
-        reason: "OPENAI_FTE_VECTOR_STORE_ID nao configurada.",
-      },
+      analysis: fallbackAnalysis,
       source: normalizeSourcePayload(sourceId, "unavailable", {
         latencyMs: Date.now() - start,
         statusReason: "missing_vector_store",
-        message: "Configure OPENAI_FTE_VECTOR_STORE_ID com o Vector Store das FTEs.",
+        message: "Configure OPENAI_FTE_VECTOR_STORE_ID com o Vector Store das FTEs. Fallback deterministico aplicado nesta execucao.",
       }),
     };
   }
 
   if (cnaes.length === 0) {
+    const fallbackAnalysis = buildFteDeterministicFallbackAnalysis(cnaes, "Nenhum CNAE disponivel para analise.");
     return {
-      analysis: {
-        available: false,
-        reason: "Nenhum CNAE disponivel para analise.",
-      },
+      analysis: fallbackAnalysis,
       source: normalizeSourcePayload(sourceId, "not_found", {
         latencyMs: Date.now() - start,
         statusReason: "no_cnaes",
@@ -1547,6 +1763,7 @@ async function generateFteDeepCnaeAnalysis({ company }) {
     '  "overall_recommendations": ["string"],',
     '  "legal_risks": ["string"]',
     "}",
+    "Seja objetivo: no maximo 2 itens por lista (obrigacoes, riscos_juridicos, recomendacoes_acao, lacunas) e no maximo 220 caracteres por campo textual longo.",
     "Se nao houver evidencia suficiente para um CNAE, preencha lacunas explicitamente e use risco 'nao_classificado'.",
   ].join("\n");
 
@@ -1561,45 +1778,60 @@ async function generateFteDeepCnaeAnalysis({ company }) {
     2
   )}`;
 
-  const response = await fetchWithTimeout("https://api.openai.com/v1/responses", sourceConfig.timeoutMs, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: OPENAI_FTE_MODEL,
-      temperature: 0.1,
-      input: [
-        {
-          role: "system",
-          content: [{ type: "input_text", text: systemPrompt }],
-        },
-        {
-          role: "user",
-          content: [{ type: "input_text", text: userPrompt }],
-        },
-      ],
-      tools: [
-        {
-          type: "file_search",
-          vector_store_ids: [OPENAI_FTE_VECTOR_STORE_ID],
-        },
-      ],
-      tool_choice: "auto",
-      max_output_tokens: 2800,
-    }),
-  });
+  const requestPayload = {
+    model: OPENAI_FTE_MODEL,
+    temperature: 0.1,
+    input: [
+      {
+        role: "system",
+        content: [{ type: "input_text", text: systemPrompt }],
+      },
+      {
+        role: "user",
+        content: [{ type: "input_text", text: userPrompt }],
+      },
+    ],
+    tools: [
+      {
+        type: "file_search",
+        vector_store_ids: [OPENAI_FTE_VECTOR_STORE_ID],
+      },
+    ],
+    tool_choice: "auto",
+    max_output_tokens: 4200,
+  };
+
+  const runFteOpenAiRequest = (timeoutMs) =>
+    fetchWithTimeout("https://api.openai.com/v1/responses", timeoutMs, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify(requestPayload),
+    });
+
+  const primaryTimeout = Number.isFinite(sourceConfig.timeoutMs) ? Math.max(sourceConfig.timeoutMs, 15000) : 60000;
+  const retryTimeoutEnv = Number.parseInt(process.env.OPENAI_FTE_RAG_RETRY_TIMEOUT_MS ?? "120000", 10);
+  const retryTimeout = Number.isFinite(retryTimeoutEnv) && retryTimeoutEnv > primaryTimeout ? retryTimeoutEnv : primaryTimeout;
+
+  let response = await runFteOpenAiRequest(primaryTimeout);
+  let retryUsed = false;
+  if (!response && retryTimeout > primaryTimeout) {
+    retryUsed = true;
+    response = await runFteOpenAiRequest(retryTimeout);
+  }
 
   if (!response) {
+    const fallbackAnalysis = buildFteDeterministicFallbackAnalysis(cnaes, "timeout_or_network");
     return {
-      analysis: {
-        available: false,
-        reason: "timeout_or_network",
-      },
+      analysis: fallbackAnalysis,
       source: normalizeSourcePayload(sourceId, "unavailable", {
         latencyMs: Date.now() - start,
-        statusReason: "timeout_or_network",
+        statusReason: retryUsed ? "timeout_or_network_after_retry" : "timeout_or_network",
+        message: retryUsed
+          ? "OpenAI nao respondeu apos tentativa principal e retry; fallback deterministico aplicado."
+          : "OpenAI nao respondeu no timeout configurado; fallback deterministico aplicado.",
       }),
     };
   }
@@ -1607,15 +1839,18 @@ async function generateFteDeepCnaeAnalysis({ company }) {
   if (!response.ok) {
     const errorPayload = await parseJsonResponse(response);
     const errorDetail = pickString(errorPayload?.error?.message ?? errorPayload?.message ?? errorPayload?.detail);
+    const fallbackAnalysis = buildFteDeterministicFallbackAnalysis(
+      cnaes,
+      errorDetail ? `OpenAI HTTP ${response.status}: ${errorDetail}` : `OpenAI HTTP ${response.status}`
+    );
     return {
-      analysis: {
-        available: false,
-        reason: errorDetail ? `OpenAI HTTP ${response.status}: ${errorDetail}` : `OpenAI HTTP ${response.status}`,
-      },
+      analysis: fallbackAnalysis,
       source: normalizeSourcePayload(sourceId, "error", {
         latencyMs: Date.now() - start,
         statusReason: `http_${response.status}`,
-        message: errorDetail ? `OpenAI retornou ${response.status}: ${errorDetail}` : undefined,
+        message: errorDetail
+          ? `OpenAI retornou ${response.status}: ${errorDetail}. Fallback deterministico aplicado.`
+          : `OpenAI retornou ${response.status}. Fallback deterministico aplicado.`,
       }),
     };
   }
@@ -1623,14 +1858,13 @@ async function generateFteDeepCnaeAnalysis({ company }) {
   const payload = await parseJsonResponse(response);
   const outputText = extractOpenAiResponseText(payload);
   if (!outputText) {
+    const fallbackAnalysis = buildFteDeterministicFallbackAnalysis(cnaes, "Resposta da OpenAI sem conteudo textual.");
     return {
-      analysis: {
-        available: false,
-        reason: "Resposta da OpenAI sem conteudo textual.",
-      },
+      analysis: fallbackAnalysis,
       source: normalizeSourcePayload(sourceId, "error", {
         latencyMs: Date.now() - start,
         statusReason: "invalid_payload",
+        message: "OpenAI respondeu sem texto util; fallback deterministico aplicado.",
       }),
     };
   }
@@ -1640,6 +1874,38 @@ async function generateFteDeepCnaeAnalysis({ company }) {
   const citations = extractOpenAiFileCitations(payload);
   const inputTokens = Number(payload?.usage?.input_tokens ?? payload?.usage?.prompt_tokens);
   const outputTokens = Number(payload?.usage?.output_tokens ?? payload?.usage?.completion_tokens);
+  const tokenCapReached =
+    Number.isFinite(outputTokens) && Number.isFinite(requestPayload.max_output_tokens)
+      ? outputTokens >= Number(requestPayload.max_output_tokens) - 10
+      : false;
+
+  if (!parsedObject) {
+    const fallbackAnalysis = buildFteDeterministicFallbackAnalysis(
+      cnaes,
+      tokenCapReached ? "output_truncated_at_max_tokens" : "invalid_or_unstructured_openai_output"
+    );
+    return {
+      analysis: {
+        ...fallbackAnalysis,
+        model: OPENAI_FTE_MODEL,
+        vector_store_id: OPENAI_FTE_VECTOR_STORE_ID,
+        ...(Number.isFinite(inputTokens) ? { input_tokens: inputTokens } : {}),
+        ...(Number.isFinite(outputTokens) ? { output_tokens: outputTokens } : {}),
+        generated_at: new Date().toISOString(),
+        parse_warning: tokenCapReached
+          ? "IA atingiu limite de tokens e retornou JSON truncado; fallback deterministico aplicado."
+          : "IA retornou payload nao parseavel; fallback deterministico aplicado.",
+      },
+      source: normalizeSourcePayload(sourceId, "error", {
+        latencyMs: Date.now() - start,
+        statusReason: tokenCapReached ? "output_truncated" : "invalid_payload",
+        message: tokenCapReached
+          ? "OpenAI retornou JSON truncado por limite de tokens; fallback deterministico aplicado."
+          : "OpenAI retornou conteudo nao estruturado; fallback deterministico aplicado.",
+        evidenceCount: Math.max(citations.length, Number(fallbackAnalysis?.stats?.total_findings ?? 0), 1),
+      }),
+    };
+  }
 
   const analysis = {
     available: true,
@@ -1822,44 +2088,415 @@ function agentMunicipal(cnaes) {
   };
 }
 
-function agentAreasContaminadas(endereco) {
+function agentStateNational(cnaes, uf) {
+  const normalizedUf = String(uf ?? "").trim().toUpperCase();
+  if (normalizedUf === "SP") {
+    const details = agentCETESB(cnaes);
+    return {
+      scope: "estadual",
+      uf: normalizedUf,
+      mode: "api_ready",
+      source_id: "sp_cetesb_licenciamento",
+      available: true,
+      details,
+      obligations: normalizeStringArray(
+        details?.matches?.map((item) => item?.obrigacao).filter(Boolean)
+      ),
+      nota:
+        details?.matches?.length > 0
+          ? "Regras estaduais de SP aplicadas automaticamente (CETESB)."
+          : "Sem gatilhos estaduais automáticos em SP na execução atual.",
+    };
+  }
+
   return {
-    instrucao: "A verificacao de areas contaminadas requer consulta georreferenciada nos sistemas oficiais.",
-    sistemas: [
-      {
-        nome: "Mapa Interativo SEMIL/CETESB",
-        url: "https://mapas.semil.sp.gov.br/portal/apps/webappviewer/index.html?id=77da778c122c4ccda8a8d6babce61b63",
-        descricao:
-          "Mapa georreferenciado com areas contaminadas e reabilitadas do Estado de SP, com busca por endereco e camadas.",
-        tipo: "geo",
+    scope: "estadual",
+    uf: normalizedUf || null,
+    mode: "manual_required",
+    source_id: normalizedUf ? `estadual_licenciamento_${normalizedUf.toLowerCase()}` : "estadual_licenciamento_default",
+    available: false,
+    details: {
+      enquadrado: false,
+      matches: [],
+      lp_precedente: false,
+      rmsp_restricoes: false,
+      nota_rmsp: null,
+      links: {
+        atividades: "",
+        tabela_atividades: "",
+        portal_licenciamento: "",
       },
-      {
-        nome: "SIGAM - Relacao de Areas Contaminadas",
-        url: "https://sigam.ambiente.sp.gov.br/sigam3/Default.aspx?idPagina=17676",
-        descricao: "Sistema de busca textual por areas contaminadas e reabilitadas.",
-        tipo: "lista",
-      },
-      {
-        nome: "Relacao Georreferenciada CETESB",
-        url: "https://cetesb.sp.gov.br/areas-contaminadas/relacao-de-areas-contaminadas/",
-        descricao: "Relacao oficial atualizada da CETESB com estatisticas por municipio.",
-        tipo: "relatorio",
-      },
-      {
-        nome: "GeoSampa (Municipio de Sao Paulo)",
-        url: "https://geosampa.prefeitura.sp.gov.br/",
-        descricao: "Para empreendimentos na capital de Sao Paulo, com camadas municipais de areas contaminadas.",
-        tipo: "geo",
-      },
-    ],
-    legislacao: {
-      lei_estadual: "Lei Estadual no 13.577/2009 - Protecao da qualidade do solo e gerenciamento de areas contaminadas",
-      decreto: "Decreto no 59.263/2013 - Regulamenta a Lei 13.577/2009",
-      it_cetesb: "Instrucao Tecnica no 039 da CETESB - Atividades Prioritarias para Gerenciamento de Areas Contaminadas",
     },
-    alerta: endereco
-      ? `Consulte os sistemas acima informando o endereco: ${endereco}`
-      : "Informe o endereco do empreendimento para orientar a consulta nos mapas georreferenciados.",
+    obligations: [
+      "Executar checklist assistido junto ao orgao ambiental estadual competente.",
+      "Validar tipologia da atividade e rito de licenciamento na norma estadual vigente.",
+    ],
+    nota: "UF sem conector estadual estruturado nesta versao. Fluxo assistido com evidencias e trilha de auditoria.",
+  };
+}
+
+function agentMunicipalNational(cnaes, uf, municipioNome) {
+  const normalizedUf = String(uf ?? "").trim().toUpperCase();
+  if (normalizedUf === "SP") {
+    const details = agentMunicipal(cnaes);
+    return {
+      scope: "municipal",
+      uf: normalizedUf,
+      municipio_nome: municipioNome ?? null,
+      mode: "api_ready",
+      source_id: "sp_consema_municipal",
+      available: true,
+      details,
+      obligations: normalizeStringArray(
+        details?.matches?.map((item) => item?.enquadramento).filter(Boolean)
+      ),
+      nota:
+        details?.matches?.length > 0
+          ? "Tipologia municipal de SP aplicada automaticamente (LC 140/2011 + DN CONSEMA 01/2024)."
+          : "Sem gatilhos municipais automáticos em SP na execução atual.",
+    };
+  }
+
+  return {
+    scope: "municipal",
+    uf: normalizedUf || null,
+    municipio_nome: municipioNome ?? null,
+    mode: "manual_required",
+    source_id: "municipal_licenciamento_generico",
+    available: false,
+    details: {
+      enquadrado: false,
+      matches: [],
+      legislacao: {
+        lc140: "https://www.planalto.gov.br/ccivil_03/leis/LCP/Lcp140.htm",
+        consema: "",
+        municipios_habilitados: "",
+      },
+      nota:
+        "Municipio sem conector estruturado nesta versao. Consulta assistida em portal oficial local.",
+    },
+    obligations: [
+      "Confirmar competencia do ente licenciador (municipal x estadual).",
+      "Mapear requisitos locais de LP/LI/LO e condicionantes urbanistico-ambientais.",
+    ],
+    nota: "Fluxo municipal assistido por checklist com trilha auditavel.",
+  };
+}
+
+function escapeArcGisSqlLike(value) {
+  return String(value ?? "")
+    .replace(/'/g, "''")
+    .replace(/%/g, "")
+    .replace(/_/g, "")
+    .trim();
+}
+
+function normalizeForLikeToken(value) {
+  const tokens = normalizeText(value).split(/\s+/).filter((token) => token.length >= 4);
+  return tokens[0] ?? "";
+}
+
+function buildSemilMapUrls(company, bestMatch = null) {
+  const params = new URLSearchParams({
+    id: SEMIL_AREAS_CONTAMINADAS_APP_ID,
+  });
+
+  const socialName = String(company?.razao_social ?? company?.nome_fantasia ?? "")
+    .trim()
+    .slice(0, 140);
+  if (socialName) {
+    params.set("find", socialName);
+  }
+
+  const lon = Number(bestMatch?.longitude);
+  const lat = Number(bestMatch?.latitude);
+  if (Number.isFinite(lon) && Number.isFinite(lat)) {
+    params.set("marker", `${lon},${lat}`);
+  }
+
+  const url = `https://mapas.semil.sp.gov.br/portal/apps/webappviewer/index.html?${params.toString()}`;
+  return {
+    official_map_embed_url: url,
+    official_map_open_url: url,
+  };
+}
+
+function toSemilMatch({
+  feature,
+  layerId,
+  layerName,
+  strategy,
+  score,
+}) {
+  const attrs = feature?.attributes && typeof feature.attributes === "object" ? feature.attributes : {};
+  const risco = score >= 0.9 ? "alto" : score >= 0.65 ? "medio" : "baixo";
+  return {
+    match_id: hashObject({
+      layerId,
+      strategy,
+      nis: attrs.NIS ?? attrs.OBJECTID ?? attrs.NumSipolText ?? "",
+      empreendimento: attrs.NomeEmpree ?? "",
+    }),
+    layer_id: layerId,
+    layer_name: layerName,
+    strategy,
+    score,
+    risco,
+    empreendimento: pickString(attrs.NomeEmpree),
+    atividade: pickString(attrs.AtividadeSipol),
+    classificacao: pickString(attrs.ClassificacaoAtual),
+    endereco: pickString(attrs.DesEndereco),
+    municipio: pickString(attrs.NomMunicipio),
+    cep: pickString(attrs.CEP),
+    nis: pickString(attrs.NIS ?? attrs.NumSipolText),
+    sigla_dg: pickString(attrs.Sigla_DG),
+    latitude:
+      Number.isFinite(Number(feature?.geometry?.y)) ? Number(feature.geometry.y) : null,
+    longitude:
+      Number.isFinite(Number(feature?.geometry?.x)) ? Number(feature.geometry.x) : null,
+  };
+}
+
+async function querySemilLayer({ layerId, where, outFields, timeoutMs }) {
+  const params = new URLSearchParams({
+    where,
+    outFields,
+    f: "json",
+    returnGeometry: "true",
+    resultRecordCount: "100",
+  });
+  const endpoint = `${SEMIL_AREAS_CONTAMINADAS_SERVICE_BASE}/${layerId}/query?${params.toString()}`;
+  const response = await fetchWithTimeout(endpoint, timeoutMs, {
+    headers: { accept: "application/json" },
+  });
+
+  if (!response) return { status: "unavailable", features: [] };
+  if (!response.ok) return { status: "error", features: [] };
+
+  const payload = await parseJsonResponse(response);
+  if (!payload || typeof payload !== "object" || payload?.error) {
+    return { status: "error", features: [] };
+  }
+
+  return {
+    status: "success",
+    features: Array.isArray(payload?.features) ? payload.features : [],
+  };
+}
+
+async function agentAreasContaminadasNational(company, uf) {
+  const normalizedUf = String(uf ?? "").trim().toUpperCase();
+  const commonPayload = buildSemilMapUrls(company);
+
+  if (normalizedUf !== "SP") {
+    return {
+      result: {
+        available: false,
+        method: "manual_required",
+        status: "manual_required",
+        summary: "Consulta automatica de areas contaminadas nao disponivel para esta UF nesta versao.",
+        matches: [],
+        evidence_refs: [],
+        limitations: [
+          "Conector geoespacial oficial ainda nao integrado para esta UF.",
+          "Executar diligencia assistida em portais oficiais estaduais/municipais.",
+        ],
+        ...commonPayload,
+      },
+      source: normalizeSourcePayload("areas_contaminadas_manual_nacional", "not_found", {
+        latencyMs: 0,
+        statusReason: "manual_required",
+        evidenceCount: 0,
+      }),
+    };
+  }
+
+  const sourceId = "sp_semil_areas_contaminadas_api";
+  const sourceConfig = resolveSourceConfig(sourceId, "SEMIL/CETESB - Areas Contaminadas (SP)", 15000);
+  const start = Date.now();
+  const targetCep = normalizeCep(company?.cep);
+  const normalizedRazao = normalizeText(company?.razao_social);
+  const normalizedEndereco = normalizeText(company?.logradouro || company?.endereco);
+  const normalizedMunicipio = normalizeText(company?.municipio);
+  const normalizedBairro = normalizeText(company?.bairro);
+  const outFields = [
+    "OBJECTID",
+    "NIS",
+    "NumSipolText",
+    "NomeEmpree",
+    "AtividadeSipol",
+    "ClassificacaoAtual",
+    "DesEndereco",
+    "NomMunicipio",
+    "NomBairro",
+    "CEP",
+    "Sigla_DG",
+  ].join(",");
+
+  const layerNames = {
+    1: "Areas Contaminadas e Reabilitadas - Geral (Pontos)",
+    2: "Areas Contaminadas e Reabilitadas - Geral (Poligonos)",
+  };
+
+  const collected = [];
+  const statusBag = [];
+
+  const pushMatches = (items) => {
+    for (const item of items) {
+      collected.push(item);
+    }
+  };
+
+  for (const layerId of SEMIL_AREAS_LAYER_IDS) {
+    if (targetCep.length >= 5) {
+      const cepPrefix = escapeArcGisSqlLike(targetCep.slice(0, 5));
+      const cepQuery = await querySemilLayer({
+        layerId,
+        where: `CEP LIKE '%${cepPrefix}%'`,
+        outFields,
+        timeoutMs: sourceConfig.timeoutMs,
+      });
+      statusBag.push(cepQuery.status);
+      const cepMatches = cepQuery.features
+        .filter((feature) => normalizeCep(feature?.attributes?.CEP) === targetCep)
+        .map((feature) =>
+          toSemilMatch({
+            feature,
+            layerId,
+            layerName: layerNames[layerId],
+            strategy: "cep",
+            score: 0.95,
+          })
+        );
+      pushMatches(cepMatches);
+    }
+
+    const razaoToken = normalizeForLikeToken(normalizedRazao);
+    if (razaoToken) {
+      const upperToken = escapeArcGisSqlLike(razaoToken.toUpperCase());
+      const razaoQuery = await querySemilLayer({
+        layerId,
+        where: `UPPER(NomeEmpree) LIKE '%${upperToken}%'`,
+        outFields,
+        timeoutMs: sourceConfig.timeoutMs,
+      });
+      statusBag.push(razaoQuery.status);
+      const razaoMatches = razaoQuery.features
+        .filter((feature) => normalizeText(feature?.attributes?.NomeEmpree).includes(razaoToken))
+        .map((feature) =>
+          toSemilMatch({
+            feature,
+            layerId,
+            layerName: layerNames[layerId],
+            strategy: "razao_social",
+            score: 0.78,
+          })
+        );
+      pushMatches(razaoMatches);
+    }
+
+    const enderecoToken = normalizeForLikeToken(normalizedEndereco);
+    if (enderecoToken) {
+      const upperToken = escapeArcGisSqlLike(enderecoToken.toUpperCase());
+      const enderecoQuery = await querySemilLayer({
+        layerId,
+        where: `UPPER(DesEndereco) LIKE '%${upperToken}%'`,
+        outFields,
+        timeoutMs: sourceConfig.timeoutMs,
+      });
+      statusBag.push(enderecoQuery.status);
+      const enderecoMatches = enderecoQuery.features
+        .filter((feature) => {
+          const address = normalizeText(feature?.attributes?.DesEndereco);
+          if (!address.includes(enderecoToken)) return false;
+          if (!normalizedMunicipio) return true;
+          const city = normalizeText(feature?.attributes?.NomMunicipio);
+          return city.includes(normalizedMunicipio) || normalizedMunicipio.includes(city);
+        })
+        .map((feature) =>
+          toSemilMatch({
+            feature,
+            layerId,
+            layerName: layerNames[layerId],
+            strategy: "endereco",
+            score: 0.62,
+          })
+        );
+      pushMatches(enderecoMatches);
+    }
+
+    if (normalizedMunicipio && normalizedBairro) {
+      const upperMunicipio = escapeArcGisSqlLike(normalizedMunicipio.toUpperCase());
+      const municipalQuery = await querySemilLayer({
+        layerId,
+        where: `UPPER(NomMunicipio) = '${upperMunicipio}'`,
+        outFields,
+        timeoutMs: sourceConfig.timeoutMs,
+      });
+      statusBag.push(municipalQuery.status);
+      const municipalMatches = municipalQuery.features
+        .filter((feature) => {
+          const bairro = normalizeText(feature?.attributes?.NomBairro);
+          if (!bairro) return false;
+          return bairro.includes(normalizedBairro) || normalizedBairro.includes(bairro);
+        })
+        .map((feature) =>
+          toSemilMatch({
+            feature,
+            layerId,
+            layerName: layerNames[layerId],
+            strategy: "municipio_bairro",
+            score: 0.45,
+          })
+        );
+      pushMatches(municipalMatches);
+    }
+  }
+
+  const deduped = new Map();
+  for (const match of collected) {
+    const key = `${match.layer_id}|${match.nis ?? ""}|${normalizeText(match.empreendimento)}`;
+    const current = deduped.get(key);
+    if (!current || Number(match.score ?? 0) > Number(current.score ?? 0)) {
+      deduped.set(key, match);
+    }
+  }
+  const matches = [...deduped.values()].sort((a, b) => Number(b.score ?? 0) - Number(a.score ?? 0));
+
+  const hadSuccess = statusBag.includes("success");
+  const hadErrorOnly = statusBag.length > 0 && !hadSuccess;
+  const sourceStatus = hadSuccess ? "success" : hadErrorOnly ? "error" : "unavailable";
+
+  const source = normalizeSourcePayload(sourceId, sourceStatus, {
+    latencyMs: Date.now() - start,
+    statusReason: hadSuccess ? "ok" : hadErrorOnly ? "query_error" : "timeout_or_network",
+    evidenceCount: matches.length,
+    ...(hadSuccess
+      ? {}
+      : {
+          message: "Nao foi possivel concluir consulta automatica nas camadas SEMIL/CETESB nesta execucao.",
+        }),
+  });
+
+  return {
+    result: {
+      available: hadSuccess,
+      method: hadSuccess ? "api_match" : "manual_required",
+      status: hadSuccess ? (matches.length > 0 ? "match_found" : "not_found") : "manual_required",
+      summary: hadSuccess
+        ? matches.length > 0
+          ? `${matches.length} match(es) identificado(s) na base oficial de areas contaminadas de SP.`
+          : "Nenhum match encontrado na base oficial de areas contaminadas de SP."
+        : "Consulta automatica indisponivel nesta execucao; seguir com diligencia manual assistida.",
+      matches,
+      evidence_refs: matches.map((item) => item.match_id),
+      limitations: [
+        "Matching por texto e endereco pode gerar falsos positivos/negativos em nomes similares.",
+        "A decisao final deve considerar validacao tecnica-juridica e consulta visual no mapa oficial.",
+      ],
+      ...buildSemilMapUrls(company, matches[0] ?? null),
+    },
+    source,
   };
 }
 
@@ -1868,14 +2505,31 @@ function countRisk(matches, level) {
   return matches.filter((item) => String(item?.risco ?? "") === level).length;
 }
 
-function classifyComplianceRisk({ fteDeepAnalysis, ibama, cetesb, municipal }) {
+function extractStateMatches(state) {
+  return Array.isArray(state?.details?.matches) ? state.details.matches : [];
+}
+
+function extractMunicipalMatches(municipal) {
+  return Array.isArray(municipal?.details?.matches) ? municipal.details.matches : [];
+}
+
+function classifyComplianceRisk({ fteDeepAnalysis, ibama, state, municipal, areasContaminadas }) {
+  const stateMatches = extractStateMatches(state);
+  const municipalMatches = extractMunicipalMatches(municipal);
+  const areaMatches = Array.isArray(areasContaminadas?.matches) ? areasContaminadas.matches : [];
+
   const highCount =
-    countRisk(fteDeepAnalysis?.findings, "alto") + countRisk(ibama.matches, "alto") + countRisk(cetesb.matches, "alto") + countRisk(municipal.matches, "alto");
+    countRisk(fteDeepAnalysis?.findings, "alto") +
+    countRisk(ibama?.matches, "alto") +
+    countRisk(stateMatches, "alto") +
+    countRisk(municipalMatches, "alto") +
+    countRisk(areaMatches, "alto");
   const mediumCount =
     countRisk(fteDeepAnalysis?.findings, "medio") +
-    countRisk(ibama.matches, "medio") +
-    countRisk(cetesb.matches, "medio") +
-    countRisk(municipal.matches, "medio");
+    countRisk(ibama?.matches, "medio") +
+    countRisk(stateMatches, "medio") +
+    countRisk(municipalMatches, "medio") +
+    countRisk(areaMatches, "medio");
 
   if (highCount >= 3 || (highCount >= 1 && mediumCount >= 3)) return "alto";
   if (highCount >= 1 || mediumCount >= 2) return "medio";
@@ -1884,12 +2538,15 @@ function classifyComplianceRisk({ fteDeepAnalysis, ibama, cetesb, municipal }) {
 
 function buildEnvironmentalAiPromptInput({
   company,
+  jurisdictionContext,
   fteDeepAnalysis,
-  ibama,
-  cetesb,
+  federal,
+  state,
   municipal,
   areasContaminadas,
   govbrContext,
+  coverage,
+  evidence,
   summary,
   sources,
 }) {
@@ -1900,8 +2557,11 @@ function buildEnvironmentalAiPromptInput({
       nome_fantasia: company?.nome_fantasia ?? null,
       situacao: company?.situacao ?? null,
       endereco: company?.endereco ?? null,
+      municipio: company?.municipio ?? null,
+      uf: company?.uf ?? null,
       cnaes: Array.isArray(company?.cnaes) ? company.cnaes : [],
     },
+    jurisdiction_context: jurisdictionContext ?? null,
     summary: summary ?? {},
     fte_deep_analysis: {
       available: Boolean(fteDeepAnalysis?.available),
@@ -1913,41 +2573,40 @@ function buildEnvironmentalAiPromptInput({
       citations: Array.isArray(fteDeepAnalysis?.citations) ? fteDeepAnalysis.citations : [],
       stats: fteDeepAnalysis?.stats ?? null,
     },
-    ibama: {
-      enquadrado: Boolean(ibama?.enquadrado),
-      matches: Array.isArray(ibama?.matches) ? ibama.matches : [],
-      nota: ibama?.nota ?? null,
+    federal: {
+      achados: federal ?? null,
+      ibama: federal?.ibama ?? null,
+      obrigacoes: Array.isArray(federal?.obligations) ? federal.obligations : [],
     },
-    cetesb: {
-      enquadrado: Boolean(cetesb?.enquadrado),
-      matches: Array.isArray(cetesb?.matches) ? cetesb.matches : [],
-      lp_precedente: Boolean(cetesb?.lp_precedente),
-      rmsp_restricoes: Boolean(cetesb?.rmsp_restricoes),
-      nota_rmsp: cetesb?.nota_rmsp ?? null,
-    },
-    municipal: {
-      enquadrado: Boolean(municipal?.enquadrado),
-      matches: Array.isArray(municipal?.matches) ? municipal.matches : [],
-      nota: municipal?.nota ?? null,
-    },
+    state: state ?? null,
+    municipal: municipal ?? null,
     areas_contaminadas: {
-      alerta: areasContaminadas?.alerta ?? null,
-      sistemas: Array.isArray(areasContaminadas?.sistemas) ? areasContaminadas.sistemas : [],
-      instrucao: areasContaminadas?.instrucao ?? null,
+      available: Boolean(areasContaminadas?.available),
+      method: areasContaminadas?.method ?? null,
+      status: areasContaminadas?.status ?? null,
+      summary: areasContaminadas?.summary ?? null,
+      matches: Array.isArray(areasContaminadas?.matches) ? areasContaminadas.matches : [],
+      limitations: Array.isArray(areasContaminadas?.limitations) ? areasContaminadas.limitations : [],
+      official_map_open_url: areasContaminadas?.official_map_open_url ?? null,
     },
     govbr_context: govbrContext ?? null,
+    coverage: coverage ?? null,
+    evidence: Array.isArray(evidence) ? evidence : [],
     sources: Array.isArray(sources) ? sources : [],
   };
 }
 
 async function generateEnvironmentalAiReport({
   company,
+  jurisdictionContext,
   fteDeepAnalysis,
-  ibama,
-  cetesb,
+  federal,
+  state,
   municipal,
   areasContaminadas,
   govbrContext,
+  coverage,
+  evidence,
   summary,
   sources,
 }) {
@@ -1990,7 +2649,7 @@ async function generateEnvironmentalAiReport({
     "1) Resumo Executivo",
     "2) Perfil e CNAEs",
     "3) Achados Profundos CNAE x FTE (RAG)",
-    "4) Achados Regulatorios (IBAMA, CETESB, Municipal)",
+    "4) Achados Regulatorios (Federal, Estadual, Municipal e Territorial)",
     "5) Contratacoes Publicas (gov.br)",
     "6) Plano de Acao Prioritario (30-60-90 dias)",
     "7) Checklist de Evidencias para Auditoria",
@@ -2002,12 +2661,15 @@ async function generateEnvironmentalAiReport({
   const userPrompt = `Dados estruturados da analise ambiental:\n\n${JSON.stringify(
     buildEnvironmentalAiPromptInput({
       company,
+      jurisdictionContext,
       fteDeepAnalysis,
-      ibama,
-      cetesb,
+      federal,
+      state,
       municipal,
       areasContaminadas,
       govbrContext,
+      coverage,
+      evidence,
       summary,
       sources,
     }),
@@ -2100,11 +2762,251 @@ function buildDisclaimers() {
   return [
     "Correspondencia CNAE x obrigacao ambiental e indicativa, nao vinculante.",
     "Enquadramento definitivo requer analise tecnica especializada e consulta das FTEs oficiais.",
-    "Agentes estaduais e municipais estao calibrados para o Estado de Sao Paulo.",
+    "Cobertura nacional opera por maturidade de fontes: conectores automaticos coexistem com trilhas manuais auditaveis.",
     "Analise profunda CNAE x FTE depende do acervo RAG carregado no OpenAI Vector Store.",
-    "Sistemas de areas contaminadas exigem consulta manual em portais GIS oficiais.",
+    "Areas contaminadas usam evidencias estruturadas quando ha API oficial; nos demais cenarios, fluxo manual assistido.",
     "Relatorio de IA tem carater de apoio e nao substitui parecer tecnico-juridico especializado.",
   ];
+}
+
+function riskWeight(value) {
+  const normalized = String(value ?? "").toLowerCase();
+  if (normalized === "alto") return 3;
+  if (normalized === "medio") return 2;
+  return 1;
+}
+
+function dedupeByKey(items, keyBuilder) {
+  const seen = new Set();
+  const output = [];
+  for (const item of Array.isArray(items) ? items : []) {
+    const key = String(keyBuilder(item));
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    output.push(item);
+  }
+  return output;
+}
+
+function buildExecutiveTopRisks({ fteDeepAnalysis, ibama, state, municipal, areasContaminadas }) {
+  const fteRisks = Array.isArray(fteDeepAnalysis?.findings)
+    ? fteDeepAnalysis.findings.map((item) => ({
+        sphere: "federal",
+        severity: item?.risco ?? "baixo",
+        title: `CNAE ${item?.cnae_codigo ?? "-"} x FTE`,
+        detail: item?.tese_enquadramento || "Possivel enquadramento com necessidade de validacao tecnica.",
+      }))
+    : [];
+  const ibamaRisks = Array.isArray(ibama?.matches)
+    ? ibama.matches.map((item) => ({
+        sphere: "federal",
+        severity: item?.risco ?? "baixo",
+        title: `IBAMA Cat. ${item?.categoria ?? "-"}`,
+        detail: item?.obrigacao || item?.nome || "Enquadramento federal identificado.",
+      }))
+    : [];
+  const stateRisks = Array.isArray(state?.details?.matches)
+    ? state.details.matches.map((item) => ({
+        sphere: "estadual",
+        severity: item?.risco ?? "medio",
+        title: `Licenciamento estadual CNAE ${item?.cnae ?? "-"}`,
+        detail: item?.obrigacao || item?.descricao || "Obrigacao estadual potencial.",
+      }))
+    : [];
+  const municipalRisks = Array.isArray(municipal?.details?.matches)
+    ? municipal.details.matches.map((item) => ({
+        sphere: "municipal",
+        severity: item?.risco ?? "medio",
+        title: `Competencia municipal CNAE ${item?.cnae ?? "-"}`,
+        detail: item?.enquadramento || item?.descricao || "Obrigacao municipal potencial.",
+      }))
+    : [];
+  const areasRisks = Array.isArray(areasContaminadas?.matches)
+    ? areasContaminadas.matches.map((item) => ({
+        sphere: "ambiental_territorial",
+        severity: item?.risco ?? "medio",
+        title: `Area contaminada (${item?.layer_name ?? "camada"})`,
+        detail: `Match ${item?.match_id ?? "-"} com score ${Number(item?.score ?? 0).toFixed(2)}.`,
+      }))
+    : [];
+
+  return dedupeByKey(
+    [...fteRisks, ...ibamaRisks, ...stateRisks, ...municipalRisks, ...areasRisks]
+      .sort((a, b) => riskWeight(b.severity) - riskWeight(a.severity))
+      .slice(0, 3),
+    (item) => `${item.title}|${item.detail}`
+  );
+}
+
+function buildExecutiveCoverageGaps({ coverage, fteDeepAnalysis, areasContaminadas }) {
+  const gaps = [];
+  if (coverage?.federal?.status !== "api_ready") gaps.push("Cobertura federal parcial/manual.");
+  if (coverage?.state?.status !== "api_ready") gaps.push("Cobertura estadual em modo manual_required para a UF.");
+  if (coverage?.municipal?.status !== "api_ready") gaps.push("Cobertura municipal em modo manual_required para o municipio.");
+  if (coverage?.ambiental_territorial?.status !== "api_ready") gaps.push("Cobertura territorial parcial/manual.");
+  if (!fteDeepAnalysis?.available) gaps.push(`RAG/FTE em fallback: ${fteDeepAnalysis?.reason || "indisponivel"}.`);
+  if (areasContaminadas?.method !== "api_match") gaps.push("Areas contaminadas exigem diligencia manual assistida.");
+  return normalizeStringArray(gaps).slice(0, 6);
+}
+
+function buildCriticalObligations({ federal, state, municipal, ibama }) {
+  const obligations = normalizeStringArray([
+    ...(Array.isArray(federal?.obligations) ? federal.obligations : []),
+    ...(Array.isArray(state?.obligations) ? state.obligations : []),
+    ...(Array.isArray(municipal?.obligations) ? municipal.obligations : []),
+    ...(Array.isArray(ibama?.matches) ? ibama.matches.map((item) => item?.obrigacao) : []),
+  ]);
+  return obligations.slice(0, 3);
+}
+
+function buildFallbackFlags({ fteDeepAnalysis, state, municipal, areasContaminadas, aiReport }) {
+  const flags = [];
+  if (!fteDeepAnalysis?.available) flags.push(`rag_fallback:${fteDeepAnalysis?.reason || "indisponivel"}`);
+  if (state?.mode !== "api_ready") flags.push(`state_manual:${state?.uf || "N/A"}`);
+  if (municipal?.mode !== "api_ready") flags.push(`municipal_manual:${municipal?.municipio_nome || "N/A"}`);
+  if (areasContaminadas?.method !== "api_match") flags.push(`territorial_manual:${areasContaminadas?.status || "manual_required"}`);
+  if (!aiReport?.available) flags.push(`ai_report_partial:${aiReport?.reason || "indisponivel"}`);
+  return flags;
+}
+
+function buildEvidenceIndex(evidence) {
+  const byAgent = {};
+  const bySource = {};
+  for (const item of Array.isArray(evidence) ? evidence : []) {
+    const agent = String(item?.agent ?? "unknown");
+    const source = String(item?.source_id ?? "unknown");
+    byAgent[agent] = Number(byAgent[agent] ?? 0) + 1;
+    bySource[source] = Number(bySource[source] ?? 0) + 1;
+  }
+  return {
+    total: Array.isArray(evidence) ? evidence.length : 0,
+    by_agent: byAgent,
+    by_source: bySource,
+  };
+}
+
+function buildConfidenceMap(evidence) {
+  const map = { alta: 0, media: 0, baixa: 0 };
+  for (const item of Array.isArray(evidence) ? evidence : []) {
+    const level = String(item?.confianca ?? "").toLowerCase();
+    if (level === "alta" || level === "media" || level === "baixa") {
+      map[level] += 1;
+    }
+  }
+  return map;
+}
+
+function buildActionPlan({ summary, federal, state, municipal, fteDeepAnalysis, areasContaminadas, coverage, aiReport }) {
+  const items = [];
+  const pushItem = (payload) => {
+    if (!payload?.title) return;
+    if (items.find((entry) => entry.title === payload.title)) return;
+    items.push({
+      id: `ap_${items.length + 1}`,
+      title: String(payload.title).slice(0, 360),
+      priority: payload.priority === "alta" || payload.priority === "baixa" ? payload.priority : "media",
+      owner: null,
+      due_date: null,
+      status: "pendente",
+      source_refs: normalizeStringArray(payload.source_refs || []),
+    });
+  };
+
+  const topObligation = Array.isArray(federal?.obligations) && federal.obligations.length > 0 ? federal.obligations[0] : null;
+  if (topObligation) {
+    pushItem({
+      title: `Validar e cumprir obrigacao federal critica: ${topObligation}`,
+      priority: summary?.risk_level === "alto" ? "alta" : "media",
+      source_refs: ["federal.ibama.ctf_app.base"],
+    });
+  }
+
+  if (state?.mode === "api_ready" && Array.isArray(state?.details?.matches) && state.details.matches.length > 0) {
+    pushItem({
+      title: "Abrir frente de licenciamento estadual (LP/LI/LO) para atividades mapeadas.",
+      priority: "alta",
+      source_refs: ["state.sp.cetesb.anexo5"],
+    });
+  }
+
+  if (municipal?.mode === "api_ready" && Array.isArray(municipal?.details?.matches) && municipal.details.matches.length > 0) {
+    pushItem({
+      title: "Confirmar competencia municipal habilitada e rito local de licenciamento.",
+      priority: "media",
+      source_refs: ["municipal.sp.consema_012024"],
+    });
+  }
+
+  if (areasContaminadas?.method === "api_match" && Array.isArray(areasContaminadas?.matches) && areasContaminadas.matches.length > 0) {
+    pushItem({
+      title: "Executar diligencia territorial imediata para os matches de areas contaminadas.",
+      priority: "alta",
+      source_refs: [...(areasContaminadas.evidence_refs || []), "territorial.sp.areas_contaminadas"],
+    });
+  } else if (areasContaminadas?.method !== "api_match") {
+    pushItem({
+      title: "Completar diligencia manual de areas contaminadas no mapa oficial e anexar evidencias.",
+      priority: "media",
+      source_refs: ["territorial.default.manual"],
+    });
+  }
+
+  if (!fteDeepAnalysis?.available) {
+    pushItem({
+      title: "Reprocessar agente RAG/FTE e revisar enquadramento por tabela FTE oficial.",
+      priority: "media",
+      source_refs: ["openai_fte_rag"],
+    });
+  }
+
+  if (!aiReport?.available) {
+    pushItem({
+      title: "Regerar relatorio IA auditavel apos estabilizar conectores/fallbacks.",
+      priority: "baixa",
+      source_refs: ["openai_relatorio_ambiental"],
+    });
+  }
+
+  if (coverage?.state?.status !== "api_ready" || coverage?.municipal?.status !== "api_ready") {
+    pushItem({
+      title: "Executar checklist de diligencia manual para lacunas estaduais/municipais.",
+      priority: "media",
+      source_refs: ["state.default.manual", "municipal.default.manual"],
+    });
+  }
+
+  if (items.length === 0) {
+    pushItem({
+      title: "Manter monitoramento de conformidade ambiental e revisar periodicamente o enquadramento.",
+      priority: "baixa",
+      source_refs: [],
+    });
+  }
+
+  return {
+    items: items.slice(0, 12),
+  };
+}
+
+function buildUxV2({ summary, federal, state, municipal, coverage, fteDeepAnalysis, ibama, areasContaminadas, aiReport, evidence }) {
+  const criticalObligations = buildCriticalObligations({ federal, state, municipal, ibama });
+  const coverageGaps = buildExecutiveCoverageGaps({ coverage, fteDeepAnalysis, areasContaminadas });
+  const topRisks = buildExecutiveTopRisks({ fteDeepAnalysis, ibama, state, municipal, areasContaminadas });
+  const fallbackFlags = buildFallbackFlags({ fteDeepAnalysis, state, municipal, areasContaminadas, aiReport });
+
+  return {
+    executive: {
+      decision_summary: `Risco agregado ${String(summary?.risk_level ?? "medio").toUpperCase()} com ${Number(summary?.total_alerts ?? 0)} alerta(s) no recorte atual.`,
+      critical_obligations: criticalObligations,
+      coverage_gaps: coverageGaps,
+      top_risks: topRisks,
+    },
+    audit: {
+      confidence_map: buildConfidenceMap(evidence),
+      evidence_index: buildEvidenceIndex(evidence),
+      fallback_flags: fallbackFlags,
+    },
+  };
 }
 
 /**
@@ -2120,13 +3022,20 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
 
   let company = null;
   let sources = [];
+  let evidence = [];
+  let jurisdictionContext = null;
+  let coverage = null;
+  let sourceCatalog = null;
+  let ruleCatalog = null;
   let fteDeepAnalysis = null;
   let ibama = null;
-  let cetesb = null;
+  let federal = null;
+  let state = null;
   let municipal = null;
   let areasContaminadas = null;
   let govbrContext = null;
   let aiReport = null;
+  let companySource = null;
 
   updateOrchestrationStep(orchestration, "agent_1_cnpj_cnae", "running", {
     message: "Consultando CNPJ e extraindo CNAEs.",
@@ -2135,9 +3044,50 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
     const companyLookup = await fetchCompanyByCnpj(cleanCnpj);
     company = companyLookup.company;
     sources = companyLookup.sources;
+    companySource = sources.find((entry) => entry?.status === "success") ?? sources[sources.length - 1] ?? null;
     const govbrResult = await queryGovBrContractsContext(cleanCnpj);
     govbrContext = govbrResult.context;
-    sources.push(govbrResult.source);
+    sources = upsertSourcePayload(sources, govbrResult.source);
+    jurisdictionContext = buildJurisdictionContext(company);
+    coverage = buildCoverageMatrix({
+      uf: jurisdictionContext?.uf,
+      municipioIbge: jurisdictionContext?.municipio_ibge,
+      municipioNome: jurisdictionContext?.municipio_nome,
+    });
+    sourceCatalog = getEnvironmentalSourceCatalog({ uf: jurisdictionContext?.uf });
+    ruleCatalog = getEnvironmentalRuleCatalog({ uf: jurisdictionContext?.uf });
+
+    if (companySource) {
+      evidence.push(
+        buildEvidenceRecord({
+          agent: "agent_1_cnpj_cnae",
+          source: companySource,
+          jurisdiction: "federal",
+          status: "success",
+          confidence: "alta",
+          summary: "Consulta cadastral e CNAEs da empresa obtidos em fonte oficial.",
+          input: { cnpj: cleanCnpj },
+          output: company,
+        })
+      );
+    }
+    if (govbrResult?.source) {
+      evidence.push(
+        buildEvidenceRecord({
+          agent: "agent_1_cnpj_cnae",
+          source: govbrResult.source,
+          jurisdiction: "federal",
+          status: govbrResult.source.status === "success" ? "success" : "partial",
+          confidence: govbrResult.source.status === "success" ? "media" : "baixa",
+          summary:
+            govbrResult.source.status === "success"
+              ? `Contexto gov.br coletado com ${Number(govbrResult.context?.found_records ?? 0)} registro(s).`
+              : `Contexto gov.br indisponivel/parcial (${govbrResult.source.status_reason || "sem motivo"}).`,
+          input: { cnpj: cleanCnpj },
+          output: govbrResult.context,
+        })
+      );
+    }
 
     updateOrchestrationStep(orchestration, "agent_1_cnpj_cnae", "completed", {
       message: `CNPJ localizado com ${company.cnaes.length} CNAE(s).`,
@@ -2166,7 +3116,24 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
   });
   const fteResult = await generateFteDeepCnaeAnalysis({ company });
   fteDeepAnalysis = fteResult.analysis;
-  sources.push(fteResult.source);
+  sources = upsertSourcePayload(sources, fteResult.source);
+  evidence.push(
+    buildEvidenceRecord({
+      agent: "agent_2_fte_rag_cnae",
+      source: fteResult.source,
+      jurisdiction: "federal",
+      status: fteResult.source.status === "success" ? "success" : "partial",
+      confidence: fteResult.source.status === "success" ? "media" : "baixa",
+      summary: fteDeepAnalysis?.available
+        ? `Analise RAG concluida para ${Number(fteDeepAnalysis?.stats?.total_findings ?? 0)} CNAE(s).`
+        : `Analise RAG indisponivel (${fteDeepAnalysis?.reason ?? "motivo nao informado"}).`,
+      input: {
+        cnpj: cleanCnpj,
+        cnaes: company.cnaes,
+      },
+      output: fteDeepAnalysis,
+    })
+  );
   updateOrchestrationStep(orchestration, "agent_2_fte_rag_cnae", "completed", {
     message: fteDeepAnalysis?.available
       ? `Analise profunda concluida para ${fteDeepAnalysis?.stats?.total_findings ?? company.cnaes.length} CNAE(s).`
@@ -2183,6 +3150,48 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
     message: "Aplicando regras de enquadramento IBAMA/CTF/FTE.",
   });
   ibama = agentIBAMA(company.cnaes);
+  const federalSource = normalizeSourcePayload(
+    "ibama_rule_engine",
+    ibama.enquadrado ? "success" : "not_found",
+    {
+      latencyMs: 0,
+      statusReason: ibama.enquadrado ? "rule_match" : "no_match",
+      evidenceCount: ibama.matches.length,
+    },
+    "Motor de Regras Federais (IBAMA/CTF/FTE)"
+  );
+  sources = upsertSourcePayload(sources, federalSource);
+  evidence.push(
+    buildEvidenceRecord({
+      agent: "agent_3_ibama_fte",
+      source: federalSource,
+      jurisdiction: "federal",
+      ruleId: "federal.ibama.ctf_app.base",
+      status: ibama.enquadrado ? "success" : "not_found",
+      confidence: ibama.enquadrado ? "media" : "alta",
+      summary: ibama.enquadrado
+        ? `${ibama.matches.length} enquadramento(s) federal(is) identificado(s).`
+        : "Nenhum enquadramento federal direto identificado por regra CNAE/FTE.",
+      input: { cnaes: company.cnaes },
+      output: ibama,
+    })
+  );
+  federal = {
+    scope: "federal",
+    ibama,
+    fte_rag: {
+      available: Boolean(fteDeepAnalysis?.available),
+      stats: fteDeepAnalysis?.stats ?? null,
+      overall_recommendations: Array.isArray(fteDeepAnalysis?.overall_recommendations) ? fteDeepAnalysis.overall_recommendations : [],
+    },
+    govbr_context: govbrContext,
+    obligations: normalizeStringArray([
+      ...ibama.matches.map((item) => item?.obrigacao).filter(Boolean),
+      ...(Array.isArray(fteDeepAnalysis?.findings)
+        ? fteDeepAnalysis.findings.flatMap((item) => (Array.isArray(item?.obrigacoes) ? item.obrigacoes : []))
+        : []),
+    ]),
+  };
   updateOrchestrationStep(orchestration, "agent_3_ibama_fte", "completed", {
     message: `${ibama.matches.length} possivel(is) enquadramento(s) no IBAMA.`,
     summary: {
@@ -2191,73 +3200,203 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
     },
   });
 
-  updateOrchestrationStep(orchestration, "agent_4_cetesb_sp", "running", {
-    message: "Aplicando regras CETESB para o Estado de SP.",
+  updateOrchestrationStep(orchestration, "agent_4_state", "running", {
+    message: "Aplicando regras estaduais dinamicas conforme UF.",
   });
-  cetesb = agentCETESB(company.cnaes);
-  updateOrchestrationStep(orchestration, "agent_4_cetesb_sp", "completed", {
-    message: `${cetesb.matches.length} atividade(s) potencialmente sujeita(s) a licenciamento CETESB.`,
+  state = agentStateNational(company.cnaes, jurisdictionContext?.uf);
+  const stateMatches = extractStateMatches(state);
+  const stateSource = normalizeSourcePayload(
+    state?.source_id ?? "estadual_licenciamento_default",
+    state?.mode === "api_ready" ? (stateMatches.length > 0 ? "success" : "not_found") : "unavailable",
+    {
+      latencyMs: 0,
+      statusReason: state?.mode === "api_ready" ? (stateMatches.length > 0 ? "rule_match" : "no_match") : "manual_required",
+      evidenceCount: stateMatches.length,
+      ...(state?.mode === "api_ready"
+        ? {}
+        : {
+            message: "Conector estadual automatico indisponivel para a UF nesta versao.",
+          }),
+    }
+  );
+  sources = upsertSourcePayload(sources, stateSource);
+  evidence.push(
+    buildEvidenceRecord({
+      agent: "agent_4_state",
+      source: stateSource,
+      jurisdiction: `estadual:${jurisdictionContext?.uf ?? "N/A"}`,
+      ruleId: state?.mode === "api_ready" ? "state.sp.cetesb.anexo5" : "state.default.manual",
+      status: state?.mode === "api_ready" ? "success" : "manual_required",
+      confidence: state?.mode === "api_ready" ? "media" : "baixa",
+      summary: state?.nota ?? "Analise estadual concluida.",
+      input: { cnaes: company.cnaes, uf: jurisdictionContext?.uf ?? null },
+      output: state,
+    })
+  );
+  updateOrchestrationStep(orchestration, "agent_4_state", "completed", {
+    message:
+      state?.mode === "api_ready"
+        ? `${stateMatches.length} achado(s) estadual(is) identificado(s) para ${state?.uf ?? "UF"}`
+        : `UF ${state?.uf ?? "N/A"} em fluxo estadual assistido (manual_required).`,
     summary: {
-      enquadrado: cetesb.enquadrado,
-      matches: cetesb.matches.length,
-      lp_precedente: cetesb.lp_precedente,
-      rmsp_restricoes: cetesb.rmsp_restricoes,
+      mode: state?.mode ?? "manual_required",
+      matches: stateMatches.length,
+      available: Boolean(state?.available),
     },
   });
 
   updateOrchestrationStep(orchestration, "agent_5_municipal", "running", {
-    message: "Aplicando regras de impacto local (LC 140/2011 e DN CONSEMA 01/2024).",
+    message: "Aplicando regras municipais dinamicas por municipio.",
   });
-  municipal = agentMunicipal(company.cnaes);
+  municipal = agentMunicipalNational(company.cnaes, jurisdictionContext?.uf, jurisdictionContext?.municipio_nome);
+  const municipalMatches = extractMunicipalMatches(municipal);
+  const municipalSource = normalizeSourcePayload(
+    municipal?.source_id ?? "municipal_licenciamento_generico",
+    municipal?.mode === "api_ready" ? (municipalMatches.length > 0 ? "success" : "not_found") : "unavailable",
+    {
+      latencyMs: 0,
+      statusReason: municipal?.mode === "api_ready" ? (municipalMatches.length > 0 ? "rule_match" : "no_match") : "manual_required",
+      evidenceCount: municipalMatches.length,
+      ...(municipal?.mode === "api_ready"
+        ? {}
+        : {
+            message: "Conector municipal automatico indisponivel para o municipio nesta versao.",
+          }),
+    }
+  );
+  sources = upsertSourcePayload(sources, municipalSource);
+  evidence.push(
+    buildEvidenceRecord({
+      agent: "agent_5_municipal",
+      source: municipalSource,
+      jurisdiction: `municipal:${jurisdictionContext?.municipio_nome ?? "N/A"}`,
+      ruleId: municipal?.mode === "api_ready" ? "municipal.sp.consema_012024" : "municipal.default.manual",
+      status: municipal?.mode === "api_ready" ? "success" : "manual_required",
+      confidence: municipal?.mode === "api_ready" ? "media" : "baixa",
+      summary: municipal?.nota ?? "Analise municipal concluida.",
+      input: {
+        cnaes: company.cnaes,
+        uf: jurisdictionContext?.uf ?? null,
+        municipio_nome: jurisdictionContext?.municipio_nome ?? null,
+      },
+      output: municipal,
+    })
+  );
   updateOrchestrationStep(orchestration, "agent_5_municipal", "completed", {
-    message: `${municipal.matches.length} atividade(s) com potencial competencia municipal.`,
+    message:
+      municipal?.mode === "api_ready"
+        ? `${municipalMatches.length} achado(s) municipal(is) identificado(s).`
+        : "Fluxo municipal em modo assistido (manual_required).",
     summary: {
-      enquadrado: municipal.enquadrado,
-      matches: municipal.matches.length,
+      mode: municipal?.mode ?? "manual_required",
+      matches: municipalMatches.length,
+      available: Boolean(municipal?.available),
     },
   });
 
   updateOrchestrationStep(orchestration, "agent_6_areas_contaminadas", "running", {
-    message: "Gerando orientacoes para consulta de areas contaminadas.",
+    message: "Executando motor de areas contaminadas (api_match/manual).",
   });
-  areasContaminadas = agentAreasContaminadas(company.endereco);
+  const areasResult = await agentAreasContaminadasNational(company, jurisdictionContext?.uf);
+  areasContaminadas = areasResult.result;
+  sources = upsertSourcePayload(sources, areasResult.source);
+  evidence.push(
+    buildEvidenceRecord({
+      agent: "agent_6_areas_contaminadas",
+      source: areasResult.source,
+      jurisdiction: `ambiental_territorial:${jurisdictionContext?.uf ?? "N/A"}`,
+      ruleId:
+        jurisdictionContext?.uf === "SP" && areasContaminadas?.method === "api_match"
+          ? "territorial.sp.areas_contaminadas"
+          : "territorial.default.manual",
+      status: areasResult.source?.status === "success" ? "success" : "manual_required",
+      confidence: areasResult.source?.status === "success" ? "media" : "baixa",
+      summary: areasContaminadas?.summary ?? "Analise territorial concluida.",
+      input: {
+        cnpj: cleanCnpj,
+        endereco: company?.endereco ?? null,
+        uf: jurisdictionContext?.uf ?? null,
+      },
+      output: areasContaminadas,
+    })
+  );
   updateOrchestrationStep(orchestration, "agent_6_areas_contaminadas", "completed", {
-    message: `${areasContaminadas.sistemas.length} sistema(s) de consulta disponibilizados.`,
+    message: `${areasContaminadas?.matches?.length ?? 0} match(es) territorial(is) retornado(s).`,
     summary: {
-      systems: areasContaminadas.sistemas.length,
-      manual_consult_required: true,
+      method: areasContaminadas?.method ?? "manual_required",
+      matches: Number(areasContaminadas?.matches?.length ?? 0),
+      status: areasContaminadas?.status ?? "manual_required",
     },
   });
 
   const fteAlerts = countRisk(fteDeepAnalysis?.findings, "alto") + countRisk(fteDeepAnalysis?.findings, "medio");
+  const stateAlerts = stateMatches.length;
+  const municipalAlerts = municipalMatches.length;
+  const areaAlerts = Number(areasContaminadas?.matches?.length ?? 0);
+  const federalAlerts = Number(ibama.matches?.length ?? 0) + Number(fteAlerts ?? 0);
   const totalAlerts =
-    Number(fteAlerts ?? 0) + Number(ibama.matches?.length ?? 0) + Number(cetesb.matches?.length ?? 0) + Number(municipal.matches?.length ?? 0);
-  const riskLevel = classifyComplianceRisk({ fteDeepAnalysis, ibama, cetesb, municipal });
+    federalAlerts + Number(stateAlerts ?? 0) + Number(municipalAlerts ?? 0) + Number(areaAlerts ?? 0);
+  const riskLevel = classifyComplianceRisk({ fteDeepAnalysis, ibama, state, municipal, areasContaminadas });
   const summary = {
     total_alerts: totalAlerts,
     fte_alerts: Number(fteAlerts ?? 0),
     ibama_alerts: Number(ibama.matches?.length ?? 0),
-    cetesb_alerts: Number(cetesb.matches?.length ?? 0),
-    municipal_alerts: Number(municipal.matches?.length ?? 0),
+    state_alerts: Number(stateAlerts ?? 0),
+    municipal_alerts: Number(municipalAlerts ?? 0),
+    areas_alerts: Number(areaAlerts ?? 0),
+    cetesb_alerts: Number(stateAlerts ?? 0),
+    by_sphere: {
+      federal: federalAlerts,
+      estadual: Number(stateAlerts ?? 0),
+      municipal: Number(municipalAlerts ?? 0),
+      ambiental_territorial: Number(areaAlerts ?? 0),
+    },
+    coverage_status: {
+      federal: coverage?.federal?.status ?? null,
+      state: coverage?.state?.status ?? null,
+      municipal: coverage?.municipal?.status ?? null,
+      ambiental_territorial: coverage?.ambiental_territorial?.status ?? null,
+    },
     risk_level: riskLevel,
   };
 
   updateOrchestrationStep(orchestration, "agent_7_relatorio_ai", "running", {
-    message: "Gerando relatorio de IA a partir dos achados ambientais.",
+    message: "Gerando relatorio de IA auditavel a partir das evidencias coletadas.",
   });
   const aiResult = await generateEnvironmentalAiReport({
     company,
+    jurisdictionContext,
     fteDeepAnalysis,
-    ibama,
-    cetesb,
+    federal,
+    state,
     municipal,
     areasContaminadas,
     govbrContext,
+    coverage,
+    evidence,
     summary,
     sources,
   });
   aiReport = aiResult.analysis;
-  sources.push(aiResult.source);
+  sources = upsertSourcePayload(sources, aiResult.source);
+  evidence.push(
+    buildEvidenceRecord({
+      agent: "agent_7_relatorio_ai",
+      source: aiResult.source,
+      jurisdiction: "federal",
+      status: aiResult.source.status === "success" ? "success" : "partial",
+      confidence: aiResult.source.status === "success" ? "media" : "baixa",
+      summary: aiReport?.available
+        ? "Relatorio IA consolidado com base em evidencias estruturadas."
+        : `Relatorio IA indisponivel (${aiReport?.reason ?? "motivo nao informado"}).`,
+      input: {
+        cnpj: cleanCnpj,
+        summary,
+        evidence_count: evidence.length,
+      },
+      output: aiReport,
+    })
+  );
   updateOrchestrationStep(orchestration, "agent_7_relatorio_ai", "completed", {
     message: aiReport?.available
       ? "Relatorio IA gerado com sucesso."
@@ -2272,16 +3411,78 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
   orchestration.status = "completed";
   orchestration.completed_at = new Date().toISOString();
 
-  return {
-    cnpj: cleanCnpj,
-    company,
-    fte_deep_analysis: fteDeepAnalysis,
+  const cetesbCompat =
+    state?.details && typeof state.details === "object"
+      ? state.details
+      : {
+          enquadrado: false,
+          matches: [],
+          lp_precedente: false,
+          rmsp_restricoes: false,
+          nota_rmsp: null,
+          links: {
+            atividades: "",
+            tabela_atividades: "",
+            portal_licenciamento: "",
+          },
+        };
+  const municipalCompat =
+    municipal?.details && typeof municipal.details === "object"
+      ? municipal.details
+      : {
+          enquadrado: false,
+          matches: [],
+          legislacao: {
+            lc140: "",
+            consema: "",
+            municipios_habilitados: "",
+          },
+          nota: "",
+        };
+  const uxV2 = buildUxV2({
+    summary,
+    federal,
+    state,
+    municipal,
+    coverage,
+    fteDeepAnalysis,
     ibama,
-    cetesb,
+    areasContaminadas,
+    aiReport,
+    evidence,
+  });
+  const actionPlan = buildActionPlan({
+    summary,
+    federal,
+    state,
+    municipal,
+    fteDeepAnalysis,
+    areasContaminadas,
+    coverage,
+    aiReport,
+  });
+
+  return {
+    schema_version: "br-v1",
+    cnpj: cleanCnpj,
+    jurisdiction_context: jurisdictionContext,
+    company,
+    federal,
+    state,
     municipal,
     areas_contaminadas: areasContaminadas,
+    coverage,
+    evidence,
+    source_catalog: sourceCatalog,
+    rule_catalog: ruleCatalog,
+    fte_deep_analysis: fteDeepAnalysis,
+    ibama,
+    cetesb: cetesbCompat,
+    municipal_legacy: municipalCompat,
     govbr_context: govbrContext,
     ai_report: aiReport,
+    ux_v2: uxV2,
+    action_plan: actionPlan,
     summary,
     orchestration,
     disclaimers: buildDisclaimers(),

@@ -17,6 +17,8 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/compliance/:analysisId" element={<Index />} />
+          <Route path="/compliance/:analysisId/:mode" element={<Index />} />
           <Route path="/relatorio/:searchId" element={<Index />} />
           <Route path="/socio" element={<Partner />} />
           <Route path="/socio/relatorio/:partnerSearchId" element={<Partner />} />
