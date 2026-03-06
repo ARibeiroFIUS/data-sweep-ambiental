@@ -19,8 +19,8 @@ const OPENAI_FTE_VECTOR_STORE_ID = (
   ""
 )
   .trim();
-const OPENAI_FTE_RAG_TIMEOUT_MS = Number.parseInt(process.env.OPENAI_FTE_RAG_TIMEOUT_MS ?? "28000", 10);
-const OPENAI_FTE_RAG_RETRY_TIMEOUT_MS = Number.parseInt(process.env.OPENAI_FTE_RAG_RETRY_TIMEOUT_MS ?? "36000", 10);
+const OPENAI_FTE_RAG_TIMEOUT_MS = Number.parseInt(process.env.OPENAI_FTE_RAG_TIMEOUT_MS ?? "60000", 10);
+const OPENAI_FTE_RAG_RETRY_TIMEOUT_MS = Number.parseInt(process.env.OPENAI_FTE_RAG_RETRY_TIMEOUT_MS ?? "95000", 10);
 const OPENAI_FTE_RAG_CNAE_LIMIT = Number.parseInt(process.env.OPENAI_FTE_RAG_CNAE_LIMIT ?? "6", 10);
 const OPENAI_FTE_RAG_MAX_OUTPUT_TOKENS = Number.parseInt(process.env.OPENAI_FTE_RAG_MAX_OUTPUT_TOKENS ?? "2600", 10);
 const OPENAI_FTE_RAG_TEMPERATURE = Number.parseFloat(process.env.OPENAI_FTE_RAG_TEMPERATURE ?? "0");
@@ -2070,12 +2070,13 @@ async function generateFteDeepCnaeAnalysis({ company }) {
 
   const configuredPrimaryTimeout =
     Number.isFinite(OPENAI_FTE_RAG_TIMEOUT_MS) && OPENAI_FTE_RAG_TIMEOUT_MS > 0 ? OPENAI_FTE_RAG_TIMEOUT_MS : sourceConfig.timeoutMs;
-  const primaryTimeout = Math.min(30000, Math.max(5000, Number.isFinite(configuredPrimaryTimeout) ? configuredPrimaryTimeout : 18000));
+  const primaryTimeout = Math.max(5000, Number.isFinite(configuredPrimaryTimeout) ? configuredPrimaryTimeout : sourceConfig.timeoutMs);
   const configuredRetryTimeout = Number.isFinite(OPENAI_FTE_RAG_RETRY_TIMEOUT_MS) ? OPENAI_FTE_RAG_RETRY_TIMEOUT_MS : 0;
+  const retryTimeoutCandidate = configuredRetryTimeout > 0 ? configuredRetryTimeout : Math.round(primaryTimeout * 1.5);
   const retryTimeout =
-    configuredRetryTimeout > primaryTimeout
-      ? Math.min(45000, Math.max(primaryTimeout + 1000, configuredRetryTimeout))
-      : primaryTimeout;
+    retryTimeoutCandidate > primaryTimeout
+      ? retryTimeoutCandidate
+      : primaryTimeout + 5000;
 
   let response = await runFteOpenAiRequest(requestPayload, primaryTimeout);
   let retryUsed = false;
@@ -2241,7 +2242,12 @@ async function generateFteDeepCnaeAnalysis({ company }) {
     analysis,
     source: normalizeSourcePayload(sourceId, "success", {
       latencyMs: Date.now() - start,
-      statusReason: "ok",
+      statusReason: retryUsed ? "ok_after_retry" : "ok",
+      ...(retryUsed
+        ? {
+            message: `RAG concluído após retry (${primaryTimeout} ms + ${retryTimeout} ms).`,
+          }
+        : {}),
       evidenceCount: Math.max(citations.length, Number(analysis?.stats?.total_findings ?? 0), 1),
     }),
   };
