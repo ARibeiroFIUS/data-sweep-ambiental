@@ -25,13 +25,21 @@ const OPENAI_FTE_RAG_CNAE_LIMIT = Number.parseInt(process.env.OPENAI_FTE_RAG_CNA
 const OPENAI_FTE_RAG_MAX_OUTPUT_TOKENS = Number.parseInt(process.env.OPENAI_FTE_RAG_MAX_OUTPUT_TOKENS ?? "2600", 10);
 const OPENAI_FTE_RAG_TEMPERATURE = Number.parseFloat(process.env.OPENAI_FTE_RAG_TEMPERATURE ?? "0");
 const OPENAI_RELATORIO_TIMEOUT_MS = Number.parseInt(process.env.OPENAI_RELATORIO_TIMEOUT_MS ?? "15000", 10);
-const ORCHESTRATION_VERSION = "2026.03.05.1";
+const ORCHESTRATION_VERSION = "2026.03.06.1";
 const SEMIL_AREAS_CONTAMINADAS_APP_ID = "77da778c122c4ccda8a8d6babce61b6b";
 const SEMIL_AREAS_CONTAMINADAS_MAP_OPEN_URL = `https://mapas.semil.sp.gov.br/portal/apps/webappviewer/index.html?id=${SEMIL_AREAS_CONTAMINADAS_APP_ID}`;
 const SEMIL_AREAS_CONTAMINADAS_MAP_EMBED_URL = SEMIL_AREAS_CONTAMINADAS_MAP_OPEN_URL;
 const SEMIL_AREAS_CONTAMINADAS_SERVICE_BASE =
   "https://mapas.semil.sp.gov.br/server/rest/services/SIGAM/Empreendimento_Contaminacao_SGP/MapServer";
 const SEMIL_AREAS_LAYER_IDS = [1, 2];
+const CETESB_PUBLIC_PORTAL_BASE_URL = "https://licenciamento.cetesb.sp.gov.br/cetesb";
+const CETESB_PUBLIC_PROCESSO_CONSULTA_URL = `${CETESB_PUBLIC_PORTAL_BASE_URL}/processo_consulta.asp`;
+const CETESB_PUBLIC_PROCESSO_RESULTADO_URL = `${CETESB_PUBLIC_PORTAL_BASE_URL}/processo_resultado.asp`;
+const CETESB_PUBLIC_AUTH_BASE_URL = "http://autenticidade.cetesb.sp.gov.br/autentica.php";
+const SEI_PUBLICO_ANVISA_URL =
+  "https://sei.anvisa.gov.br/sei/modulos/pesquisa/md_pesq_processo_pesquisar.php?acao_externa=protocolo_pesquisar&acao_origem_externa=protocolo_pesquisar&id_orgao_acesso_externo=0";
+const SEI_PUBLICO_IBAMA_URL =
+  "https://sei.ibama.gov.br/sei/modulos/pesquisa/md_pesq_processo_pesquisar.php?acao_externa=protocolo_pesquisar&acao_origem_externa=protocolo_pesquisar&id_orgao_acesso_externo=0";
 
 const FTE_CATEGORIES = [
   {
@@ -839,9 +847,12 @@ function createOrchestration(cnpj) {
       { agent: "agent_2_fte_rag_cnae", title: "Análise Profunda CNAE x FTE (RAG)", status: "pending", started_at: null, completed_at: null },
       { agent: "agent_3_ibama_fte", title: "Regras Federais (IBAMA/CTF/FTE)", status: "pending", started_at: null, completed_at: null },
       { agent: "agent_4_state", title: "Regras Estaduais (UF)", status: "pending", started_at: null, completed_at: null },
-      { agent: "agent_5_municipal", title: "Regras Municipais", status: "pending", started_at: null, completed_at: null },
-      { agent: "agent_6_areas_contaminadas", title: "Áreas Contaminadas", status: "pending", started_at: null, completed_at: null },
-      { agent: "agent_7_relatorio_ai", title: "Relatório IA Auditável", status: "pending", started_at: null, completed_at: null },
+      { agent: "agent_5_cetesb_licencas_publicas", title: "CETESB Licenças Públicas", status: "pending", started_at: null, completed_at: null },
+      { agent: "agent_6_municipal", title: "Regras Municipais", status: "pending", started_at: null, completed_at: null },
+      { agent: "agent_7_areas_contaminadas", title: "Áreas Contaminadas", status: "pending", started_at: null, completed_at: null },
+      { agent: "agent_8_sanitario", title: "Módulo Sanitário Nacional", status: "pending", started_at: null, completed_at: null },
+      { agent: "agent_9_sei_publico", title: "SEI Público Assistido", status: "pending", started_at: null, completed_at: null },
+      { agent: "agent_10_relatorio_ai", title: "Relatório IA Auditável", status: "pending", started_at: null, completed_at: null },
     ],
     events: [],
   };
@@ -2490,6 +2501,945 @@ function agentMunicipalNational(cnaes, uf, municipioNome) {
   };
 }
 
+function decodeHtmlEntities(value) {
+  const html = String(value ?? "");
+  const named = {
+    amp: "&",
+    lt: "<",
+    gt: ">",
+    quot: '"',
+    apos: "'",
+    nbsp: " ",
+    ordm: "º",
+    ordf: "ª",
+    ccedil: "ç",
+    Ccedil: "Ç",
+    atilde: "ã",
+    Atilde: "Ã",
+    acirc: "â",
+    Acirc: "Â",
+    eacute: "é",
+    Eacute: "É",
+    ecirc: "ê",
+    Ecirc: "Ê",
+    iacute: "í",
+    Iacute: "Í",
+    oacute: "ó",
+    Oacute: "Ó",
+    ocirc: "ô",
+    Ocirc: "Ô",
+    otilde: "õ",
+    Otilde: "Õ",
+    uacute: "ú",
+    Uacute: "Ú",
+    aacute: "á",
+    Aacute: "Á",
+  };
+  return html.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (_, entityRaw) => {
+    const entity = String(entityRaw ?? "");
+    if (!entity) return _;
+    if (entity.startsWith("#x") || entity.startsWith("#X")) {
+      const code = Number.parseInt(entity.slice(2), 16);
+      return Number.isFinite(code) ? String.fromCharCode(code) : _;
+    }
+    if (entity.startsWith("#")) {
+      const code = Number.parseInt(entity.slice(1), 10);
+      return Number.isFinite(code) ? String.fromCharCode(code) : _;
+    }
+    return named[entity] ?? _;
+  });
+}
+
+function mojibakeScore(value) {
+  const text = String(value ?? "");
+  if (!text) return 0;
+  const controlChars = (text.match(/[\u0080-\u009f]/g) || []).length;
+  const artifacts = (text.match(/Ã.|Â.|â.|�/g) || []).length;
+  return controlChars + artifacts;
+}
+
+function normalizeLegacyTextEncoding(value) {
+  const text = String(value ?? "");
+  if (!text) return "";
+  const converted = Buffer.from(text, "latin1").toString("utf8");
+  return mojibakeScore(converted) < mojibakeScore(text) ? converted : text;
+}
+
+function stripHtml(value) {
+  const legacyNormalized = normalizeLegacyTextEncoding(String(value ?? ""));
+  const cleaned = decodeHtmlEntities(legacyNormalized)
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned;
+}
+
+function decodeLegacyPercentEncoding(value) {
+  const input = String(value ?? "");
+  const bytes = [];
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+    if (char === "+") {
+      bytes.push(0x20);
+      continue;
+    }
+    if (char === "%" && index + 2 < input.length) {
+      const hex = input.slice(index + 1, index + 3);
+      if (/^[0-9a-fA-F]{2}$/.test(hex)) {
+        bytes.push(Number.parseInt(hex, 16));
+        index += 2;
+        continue;
+      }
+    }
+    bytes.push(input.charCodeAt(index) & 0xff);
+  }
+  return normalizeLegacyTextEncoding(Buffer.from(bytes).toString("latin1"));
+}
+
+function parseLegacyQueryParams(urlLike) {
+  const href = String(urlLike ?? "");
+  const queryIndex = href.indexOf("?");
+  if (queryIndex < 0) return {};
+  const rawQuery = href.slice(queryIndex + 1);
+  const output = {};
+  for (const pair of rawQuery.split("&")) {
+    if (!pair) continue;
+    const separator = pair.indexOf("=");
+    const rawKey = separator >= 0 ? pair.slice(0, separator) : pair;
+    const rawValue = separator >= 0 ? pair.slice(separator + 1) : "";
+    const key = decodeLegacyPercentEncoding(rawKey).trim().toLowerCase();
+    if (!key) continue;
+    output[key] = decodeLegacyPercentEncoding(rawValue).trim();
+  }
+  return output;
+}
+
+function toAbsoluteUrl(baseUrl, href) {
+  const raw = String(href ?? "").trim();
+  if (!raw) return "";
+  try {
+    return new URL(raw, baseUrl).toString();
+  } catch {
+    return raw;
+  }
+}
+
+function extractHtmlRows(html) {
+  return [...String(html ?? "").matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].map((match) => String(match[1] ?? ""));
+}
+
+function extractHtmlCells(rowHtml) {
+  return [...String(rowHtml ?? "").matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map((match) => ({
+    html: String(match[1] ?? ""),
+    text: stripHtml(match[1]),
+  }));
+}
+
+function normalizeCetesbDate(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(text)) return text;
+  return text;
+}
+
+export function parseCetesbResultadoCandidatesHtml(html) {
+  const content = String(html ?? "");
+  const candidates = [];
+  const seen = new Set();
+  const anchorMatches = content.matchAll(
+    /<a\s+href=["']([^"']*processo_resultado2\.asp[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi
+  );
+
+  for (const anchor of anchorMatches) {
+    const rawHref = String(anchor[1] ?? "").trim();
+    if (!rawHref) continue;
+    const href = toAbsoluteUrl(`${CETESB_PUBLIC_PORTAL_BASE_URL}/`, rawHref);
+    if (!href || seen.has(href)) continue;
+    seen.add(href);
+    const params = parseLegacyQueryParams(rawHref);
+    candidates.push({
+      href,
+      razao_social: stripHtml(anchor[2]) || pickString(params.razao),
+      municipio: pickString(params.muni),
+      logradouro: pickString(params.logrd),
+      cnpj: normalizeCnpj(params.cgc),
+      cadastro_numero: pickString(params.nseqnc),
+    });
+  }
+
+  return candidates;
+}
+
+export function parseCetesbDetalheLicencasHtml(html) {
+  const rows = extractHtmlRows(html);
+  const cadastro = {
+    razao_social: null,
+    municipio: null,
+    logradouro: null,
+    cnpj: null,
+    cadastro_numero: null,
+  };
+
+  for (const row of rows) {
+    const cells = extractHtmlCells(row);
+    const text = cells.length > 0 ? cells.map((cell) => cell.text).join(" ") : stripHtml(row);
+    if (!text) continue;
+    const normalized = normalizeText(text);
+    if (!cadastro.razao_social && normalized.includes("razao social")) {
+      const sourceText =
+        cells.find((cell) => normalizeText(cell.text).includes("razao social"))?.text ?? text;
+      const parts = sourceText.split(" - ");
+      if (parts.length >= 2) cadastro.razao_social = parts.slice(1).join(" - ").trim();
+      continue;
+    }
+    if (!cadastro.logradouro && normalized.includes("logradouro")) {
+      const sourceText =
+        cells.find((cell) => normalizeText(cell.text).includes("logradouro"))?.text ?? text;
+      const parts = sourceText.split(" - ");
+      if (parts.length >= 2) cadastro.logradouro = parts.slice(1).join(" - ").trim();
+      continue;
+    }
+    if (!cadastro.cadastro_numero && normalized.includes("cadastro na cetesb")) {
+      const sourceText =
+        cells.find((cell) => normalizeText(cell.text).includes("cadastro na cetesb"))?.text ?? text;
+      const parts = sourceText.split(" - ");
+      if (parts.length >= 2) cadastro.cadastro_numero = parts.slice(1).join(" - ").trim();
+      continue;
+    }
+    if (normalized.includes("municipio") && normalized.includes("cnpj")) {
+      const municipioSource =
+        cells.find((cell) => normalizeText(cell.text).includes("municipio"))?.text ?? text;
+      const cnpjSource =
+        cells.find((cell) => normalizeText(cell.text).includes("cnpj"))?.text ?? text;
+      const municipioMatch = municipioSource.match(/Municip[íi]pio\s*-\s*(.+)$/i);
+      const cnpjMatch = cnpjSource.match(/CNPJ\s*-\s*([0-9.\/-]+)/i);
+      if (!cadastro.municipio && municipioMatch?.[1]) cadastro.municipio = municipioMatch[1].trim();
+      if (!cadastro.cnpj && cnpjMatch?.[1]) cadastro.cnpj = normalizeCnpj(cnpjMatch[1]);
+    }
+  }
+
+  const headerTableMatch = String(html ?? "").match(/<table\b[^>]*>[\s\S]*?<\/table>/i);
+  const headerText = stripHtml(headerTableMatch?.[0] ?? String(html ?? ""));
+  if (!cadastro.razao_social) {
+    const match = headerText.match(/Raz[aã]o\s+Social\s*-\s*(.+?)(?:\s+Logradouro\s*-|$)/i);
+    if (match?.[1]) cadastro.razao_social = match[1].trim();
+  }
+  if (!cadastro.logradouro) {
+    const match = headerText.match(/Logradouro\s*-\s*(.+?)(?:\s+N[ºo]\s+|\s+Munic[íi]pio\s*-|$)/i);
+    if (match?.[1]) cadastro.logradouro = match[1].trim();
+  }
+  if (!cadastro.municipio) {
+    const match = headerText.match(/Munic[íi]pio\s*-\s*(.+?)(?:\s+CNPJ\s*-|$)/i);
+    if (match?.[1]) cadastro.municipio = match[1].trim();
+  }
+  if (!cadastro.cnpj) {
+    const match = headerText.match(/CNPJ\s*-\s*([0-9.\/-]+)/i);
+    if (match?.[1]) cadastro.cnpj = normalizeCnpj(match[1]);
+  }
+  if (!cadastro.cadastro_numero) {
+    const match = headerText.match(/N[ºo]\s+do\s+Cadastro\s+na\s+CETESB\s*-\s*([0-9-]+)/i);
+    if (match?.[1]) cadastro.cadastro_numero = match[1].trim();
+  }
+
+  const licenses = [];
+  for (const row of rows) {
+    const cells = extractHtmlCells(row);
+    if (cells.length < 6) continue;
+    const sdNumero = pickString(cells[0]?.text);
+    if (!sdNumero || normalizeCnpj(sdNumero).length === 14 || !/^\d{6,10}$/.test(cleanDigits(sdNumero))) continue;
+
+    const documentCell = cells[4] ?? { html: "", text: "" };
+    const linkMatch = String(documentCell.html).match(/<a\s+href=['"]([^'"]+)['"][^>]*>([\s\S]*?)<\/a>/i);
+    const documentoAutenticidadeUrl = linkMatch?.[1]
+      ? toAbsoluteUrl(CETESB_PUBLIC_AUTH_BASE_URL, linkMatch[1])
+      : null;
+    const documentoNumeroFromLink = stripHtml(linkMatch?.[2] ?? "");
+    const documentoNumero = pickString(documentoNumeroFromLink || documentCell.text);
+
+    const situacaoRaw = pickString(cells[5]?.text);
+    let situacao = situacaoRaw;
+    if (situacao && documentoNumero) {
+      const normalizedSituacao = normalizeText(situacao);
+      const normalizedDocumento = normalizeText(documentoNumero);
+      if (normalizedSituacao.startsWith(normalizedDocumento)) {
+        situacao = pickString(situacao.replace(documentoNumero, "").replace(/^\s*-\s*/, ""));
+      }
+    }
+
+    licenses.push({
+      sd_numero: sdNumero,
+      data_sd: normalizeCetesbDate(cells[1]?.text),
+      numero_processo: pickString(cells[2]?.text),
+      objeto_solicitacao: pickString(cells[3]?.text),
+      numero_documento: documentoNumero,
+      situacao,
+      desde: normalizeCetesbDate(cells[6]?.text),
+      documento_autenticidade_url: documentoAutenticidadeUrl,
+    });
+  }
+
+  return {
+    cadastro,
+    licenses,
+  };
+}
+
+function computeCetesbCompanyMatch({ company, candidate }) {
+  const companyCnpj = normalizeCnpj(company?.cnpj);
+  const candidateCnpj = normalizeCnpj(candidate?.cnpj);
+  const companyName = normalizeText(company?.razao_social || company?.nome_fantasia);
+  const candidateName = normalizeText(candidate?.razao_social);
+  const companyMunicipio = normalizeText(company?.municipio);
+  const candidateMunicipio = normalizeText(candidate?.municipio);
+  const companyLogradouro = normalizeText(company?.logradouro || company?.endereco);
+  const candidateLogradouro = normalizeText(candidate?.logradouro);
+
+  const cnpjExact = Boolean(companyCnpj && candidateCnpj && companyCnpj === candidateCnpj);
+  const razaoMatch = Boolean(companyName && candidateName && (companyName.includes(candidateName) || candidateName.includes(companyName)));
+  const municipioMatch = Boolean(
+    companyMunicipio &&
+      candidateMunicipio &&
+      (companyMunicipio.includes(candidateMunicipio) || candidateMunicipio.includes(companyMunicipio))
+  );
+  const logradouroMatch = Boolean(
+    companyLogradouro &&
+      candidateLogradouro &&
+      (companyLogradouro.includes(candidateLogradouro) || candidateLogradouro.includes(companyLogradouro))
+  );
+
+  let score = 0;
+  if (cnpjExact) score += 1;
+  if (razaoMatch) score += 0.6;
+  if (municipioMatch) score += 0.35;
+  if (logradouroMatch) score += 0.25;
+
+  const matchLevel = cnpjExact ? "alto" : razaoMatch && (municipioMatch || logradouroMatch) ? "medio" : score > 0 ? "baixo" : "sem_match";
+
+  return {
+    score: Number(Math.min(1, score).toFixed(2)),
+    match_level: matchLevel,
+    criteria: {
+      cnpj_exact: cnpjExact,
+      razao_social_match: razaoMatch,
+      municipio_match: municipioMatch,
+      logradouro_match: logradouroMatch,
+    },
+  };
+}
+
+async function fetchLegacyHtml(url, timeoutMs, init = {}) {
+  const response = await fetchWithTimeout(url, timeoutMs, init);
+  if (!response) return { ok: false, status: null, html: "", status_reason: "timeout_or_network" };
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const html = bytes.toString("latin1");
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      html,
+      status_reason: `http_${response.status}`,
+    };
+  }
+  return {
+    ok: true,
+    status: response.status,
+    html,
+    status_reason: "ok",
+  };
+}
+
+async function agentCetesbLicencasPublicas({ company, uf }) {
+  const normalizedUf = String(uf ?? "").trim().toUpperCase();
+  const sourceId = "sp_cetesb_licencas_publicas_portal";
+  const sourceConfig = resolveSourceConfig(sourceId, "CETESB/SP - Licenças Públicas", 12000);
+  const start = Date.now();
+  const cleanCnpj = normalizeCnpj(company?.cnpj);
+
+  if (normalizedUf !== "SP") {
+    return {
+      result: {
+        available: false,
+        method: "not_applicable",
+        query: {
+          cnpj: cleanCnpj || null,
+          uf: normalizedUf || null,
+        },
+        company_matches: [],
+        licenses: [],
+        official_links: {
+          consulta_url: CETESB_PUBLIC_PROCESSO_CONSULTA_URL,
+          resultado_url: CETESB_PUBLIC_PROCESSO_RESULTADO_URL,
+          autenticidade_base_url: CETESB_PUBLIC_AUTH_BASE_URL,
+        },
+        evidence_refs: [],
+        limitations: ["Consulta pública CETESB aplicável apenas para estabelecimentos em SP."],
+      },
+      source: normalizeSourcePayload(sourceId, "not_found", {
+        latencyMs: Date.now() - start,
+        statusReason: "not_applicable",
+        evidenceCount: 0,
+      }),
+    };
+  }
+
+  if (cleanCnpj.length !== 14) {
+    return {
+      result: {
+        available: false,
+        method: "portal_connector",
+        query: {
+          cnpj: cleanCnpj || null,
+          uf: normalizedUf || null,
+        },
+        company_matches: [],
+        licenses: [],
+        official_links: {
+          consulta_url: CETESB_PUBLIC_PROCESSO_CONSULTA_URL,
+          resultado_url: CETESB_PUBLIC_PROCESSO_RESULTADO_URL,
+          autenticidade_base_url: CETESB_PUBLIC_AUTH_BASE_URL,
+        },
+        evidence_refs: [],
+        limitations: ["CNPJ inválido para consulta no portal de licenciamento CETESB."],
+      },
+      source: normalizeSourcePayload(sourceId, "error", {
+        latencyMs: Date.now() - start,
+        statusReason: "invalid_cnpj",
+        evidenceCount: 0,
+      }),
+    };
+  }
+
+  const searchResponse = await fetchLegacyHtml(CETESB_PUBLIC_PROCESSO_RESULTADO_URL, sourceConfig.timeoutMs, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Origin: "https://licenciamento.cetesb.sp.gov.br",
+      Referer: CETESB_PUBLIC_PROCESSO_CONSULTA_URL,
+    },
+    body: new URLSearchParams({ cgc: cleanCnpj }),
+  });
+
+  if (!searchResponse.ok) {
+    return {
+      result: {
+        available: false,
+        method: "portal_connector",
+        query: {
+          cnpj: cleanCnpj,
+          uf: normalizedUf,
+        },
+        company_matches: [],
+        licenses: [],
+        official_links: {
+          consulta_url: CETESB_PUBLIC_PROCESSO_CONSULTA_URL,
+          resultado_url: CETESB_PUBLIC_PROCESSO_RESULTADO_URL,
+          autenticidade_base_url: CETESB_PUBLIC_AUTH_BASE_URL,
+        },
+        evidence_refs: [],
+        limitations: ["Falha ao consultar o portal público da CETESB nesta execução."],
+      },
+      source: normalizeSourcePayload(sourceId, "unavailable", {
+        latencyMs: Date.now() - start,
+        statusReason: searchResponse.status_reason,
+        evidenceCount: 0,
+      }),
+    };
+  }
+
+  const candidates = parseCetesbResultadoCandidatesHtml(searchResponse.html).slice(0, 8);
+  if (candidates.length === 0) {
+    return {
+      result: {
+        available: true,
+        method: "portal_connector",
+        query: {
+          cnpj: cleanCnpj,
+          uf: normalizedUf,
+        },
+        company_matches: [],
+        licenses: [],
+        official_links: {
+          consulta_url: CETESB_PUBLIC_PROCESSO_CONSULTA_URL,
+          resultado_url: CETESB_PUBLIC_PROCESSO_RESULTADO_URL,
+          autenticidade_base_url: CETESB_PUBLIC_AUTH_BASE_URL,
+        },
+        evidence_refs: [],
+        limitations: ["Nenhum cadastro foi retornado pelo portal CETESB para o CNPJ informado."],
+      },
+      source: normalizeSourcePayload(sourceId, "not_found", {
+        latencyMs: Date.now() - start,
+        statusReason: "not_found",
+        evidenceCount: 0,
+      }),
+    };
+  }
+
+  const companyMatches = [];
+  for (const candidate of candidates) {
+    const detailResponse = await fetchLegacyHtml(candidate.href, sourceConfig.timeoutMs, {
+      method: "GET",
+      headers: {
+        Referer: CETESB_PUBLIC_PROCESSO_RESULTADO_URL,
+      },
+    });
+    const detail = detailResponse.ok ? parseCetesbDetalheLicencasHtml(detailResponse.html) : { cadastro: {}, licenses: [] };
+    const mergedCandidate = {
+      ...candidate,
+      ...detail.cadastro,
+      cnpj: normalizeCnpj(detail?.cadastro?.cnpj || candidate?.cnpj),
+    };
+    const matching = computeCetesbCompanyMatch({ company, candidate: mergedCandidate });
+    companyMatches.push({
+      match_id: hashObject({
+        cnpj: cleanCnpj,
+        href: candidate.href,
+        score: matching.score,
+      }),
+      candidate_url: candidate.href,
+      razao_social: mergedCandidate?.razao_social ?? null,
+      municipio: mergedCandidate?.municipio ?? null,
+      logradouro: mergedCandidate?.logradouro ?? null,
+      cnpj: mergedCandidate?.cnpj ?? null,
+      score: matching.score,
+      match_level: matching.match_level,
+      criteria: matching.criteria,
+      licenses_count: Array.isArray(detail?.licenses) ? detail.licenses.length : 0,
+      licenses: Array.isArray(detail?.licenses) ? detail.licenses : [],
+    });
+  }
+
+  companyMatches.sort((a, b) => Number(b.score ?? 0) - Number(a.score ?? 0));
+  const selected = companyMatches[0] ?? null;
+  const selectedLicenses = Array.isArray(selected?.licenses)
+    ? selected.licenses.map((license) => ({
+        ...license,
+        match_id: selected.match_id,
+      }))
+    : [];
+  const evidenceRefs = selectedLicenses.map((license) =>
+    hashObject({
+      source: sourceId,
+      cnpj: cleanCnpj,
+      sd_numero: license?.sd_numero ?? "",
+      numero_processo: license?.numero_processo ?? "",
+      numero_documento: license?.numero_documento ?? "",
+    })
+  );
+
+  return {
+    result: {
+      available: true,
+      method: "portal_connector",
+      query: {
+        cnpj: cleanCnpj,
+        uf: normalizedUf,
+        razao_social: pickString(company?.razao_social),
+        municipio: pickString(company?.municipio),
+      },
+      company_matches: companyMatches.map((item) => ({
+        match_id: item.match_id,
+        candidate_url: item.candidate_url,
+        razao_social: item.razao_social,
+        municipio: item.municipio,
+        logradouro: item.logradouro,
+        cnpj: item.cnpj,
+        score: item.score,
+        match_level: item.match_level,
+        criteria: item.criteria,
+        licenses_count: item.licenses_count,
+      })),
+      licenses: selectedLicenses,
+      official_links: {
+        consulta_url: CETESB_PUBLIC_PROCESSO_CONSULTA_URL,
+        resultado_url: CETESB_PUBLIC_PROCESSO_RESULTADO_URL,
+        autenticidade_base_url: CETESB_PUBLIC_AUTH_BASE_URL,
+      },
+      evidence_refs: evidenceRefs,
+      limitations: [
+        "Portal CETESB utiliza HTML legado (ISO-8859-1) e pode mudar estrutura sem aviso.",
+        "Quando houver múltiplos estabelecimentos, os dados são priorizados pelo melhor match determinístico.",
+      ],
+    },
+    source: normalizeSourcePayload(
+      sourceId,
+      selectedLicenses.length > 0 ? "success" : "not_found",
+      {
+        latencyMs: Date.now() - start,
+        statusReason: selectedLicenses.length > 0 ? "rule_match" : "no_match",
+        evidenceCount: selectedLicenses.length,
+      }
+    ),
+  };
+}
+
+const SANITARIO_RULES = [
+  {
+    id: "san_farmacos",
+    tema: "Medicamentos e insumos farmacêuticos",
+    risco: "alto",
+    cnae_prefixes: ["21", "4644", "4771"],
+    keywords: ["farmaceut", "medicamento", "insumo farmaceutico"],
+    obrigacao: "Validar necessidade de AFE/AE e regularização sanitária federal (ANVISA).",
+  },
+  {
+    id: "san_cosmeticos_saneantes",
+    tema: "Cosméticos, higiene pessoal e saneantes",
+    risco: "alto",
+    cnae_prefixes: ["2063", "4646", "4772"],
+    keywords: ["cosmetico", "higiene pessoal", "saneante", "perfume"],
+    obrigacao: "Verificar regularização sanitária para fabricação/importação/distribuição de produtos sujeitos à VISA.",
+  },
+  {
+    id: "san_alimentos",
+    tema: "Alimentos e bebidas",
+    risco: "alto",
+    cnae_prefixes: ["10", "11", "463", "472", "561", "562"],
+    keywords: ["alimento", "bebida", "frigorifico", "laticinio", "restaurante"],
+    obrigacao: "Checar licença sanitária e requisitos de boas práticas aplicáveis à cadeia de alimentos.",
+  },
+  {
+    id: "san_dispositivos",
+    tema: "Dispositivos médicos e equipamentos para saúde",
+    risco: "alto",
+    cnae_prefixes: ["3250", "2660", "4645", "4773"],
+    keywords: ["dispositivo medico", "equipamento medico", "produto para saude"],
+    obrigacao: "Confirmar enquadramento sanitário e exigências de registro/notificação de produtos para saúde.",
+  },
+  {
+    id: "san_servicos_saude",
+    tema: "Serviços de saúde",
+    risco: "medio",
+    cnae_prefixes: ["86", "87", "88"],
+    keywords: ["hospital", "clinica", "laboratorio", "saude humana"],
+    obrigacao: "Verificar alvará/licença sanitária e responsabilidade técnica perante VISA estadual/municipal.",
+  },
+  {
+    id: "san_residuos_saneamento",
+    tema: "Saneamento, resíduos e controle ambiental correlato",
+    risco: "medio",
+    cnae_prefixes: ["36", "37", "38", "39"],
+    keywords: ["residuo", "esgoto", "agua", "tratamento"],
+    obrigacao: "Confirmar exigências sanitárias complementares para operações com resíduos e saneamento.",
+  },
+];
+
+function matchSanitarioRule(cnae) {
+  const code = normalizeCnaeCode(cnae?.codigo);
+  const description = normalizeText(cnae?.descricao);
+  for (const rule of SANITARIO_RULES) {
+    const prefixMatch = rule.cnae_prefixes.some((prefix) => code.startsWith(normalizeCnaeCode(prefix)));
+    if (prefixMatch) return { rule, strategy: "cnae_prefix" };
+    const keywordMatch = rule.keywords.some((keyword) => description.includes(normalizeText(keyword)));
+    if (keywordMatch) return { rule, strategy: "descricao_keyword" };
+  }
+  return null;
+}
+
+function sanitizeChecklist(items) {
+  return normalizeStringArray(items).slice(0, 6);
+}
+
+function buildSanitarioCoverageBySphere(uf, municipioNome) {
+  const normalizedUf = String(uf ?? "").trim().toUpperCase();
+  return {
+    federal: {
+      status: "portal",
+      mode: "portal",
+      source_id: "sanitario_anvisa_portal",
+      label: "Consulta pública federal (ANVISA/SNVS)",
+    },
+    state: {
+      status: normalizedUf ? "portal" : "manual_required",
+      mode: normalizedUf ? "portal" : "manual_required",
+      source_id: "sanitario_vigilancia_estadual",
+      label: normalizedUf
+        ? `Consulta pública/assistida da vigilância estadual (${normalizedUf})`
+        : "Consulta assistida da vigilância sanitária estadual",
+    },
+    municipal: {
+      status: municipioNome ? "manual_required" : "manual_required",
+      mode: "manual_required",
+      source_id: "sanitario_vigilancia_municipal",
+      label: municipioNome
+        ? `Checklist assistido de vigilância sanitária municipal (${municipioNome})`
+        : "Checklist assistido de vigilância sanitária municipal",
+    },
+  };
+}
+
+function agentSanitarioNational({ company, uf, municipioNome }) {
+  const cnaes = Array.isArray(company?.cnaes) ? company.cnaes : [];
+  const findings = [];
+  for (const cnae of cnaes) {
+    const match = matchSanitarioRule(cnae);
+    if (!match) continue;
+    findings.push({
+      finding_id: hashObject({
+        cnae: cnae?.codigo,
+        rule: match.rule.id,
+        strategy: match.strategy,
+      }),
+      cnae_codigo: cnae?.codigo ?? "",
+      cnae_descricao: cnae?.descricao ?? "",
+      principal: Boolean(cnae?.principal),
+      tema: match.rule.tema,
+      risco: match.rule.risco,
+      trigger_strategy: match.strategy,
+      obrigacoes: [match.rule.obrigacao],
+      esferas: ["federal", "estadual", "municipal"],
+    });
+  }
+
+  const obligations = normalizeStringArray(
+    findings.flatMap((item) => (Array.isArray(item?.obrigacoes) ? item.obrigacoes : []))
+  );
+  const coverage = buildSanitarioCoverageBySphere(uf, municipioNome);
+  const normalizedUf = String(uf ?? "").trim().toUpperCase();
+  const municipalityLabel = String(municipioNome ?? "").trim();
+
+  const federalChecklist = sanitizeChecklist([
+    "Consultar regularização da empresa/produto no portal oficial da ANVISA (quando aplicável).",
+    "Validar necessidade de AFE/AE e responsável técnico conforme atividade sanitária exercida.",
+    "Arquivar evidências da consulta (protocolo, tela e data/hora) para trilha de auditoria.",
+  ]);
+  const stateChecklist = sanitizeChecklist([
+    normalizedUf
+      ? `Verificar no portal da vigilância sanitária de ${normalizedUf} a necessidade de licença/alvará estadual.`
+      : "Verificar no portal da vigilância sanitária estadual a necessidade de licença/alvará.",
+    "Confirmar exigências estaduais complementares para a tipologia da atividade.",
+    "Registrar número de processo/licença e validade em dossiê auditável.",
+  ]);
+  const municipalChecklist = sanitizeChecklist([
+    municipalityLabel
+      ? `Confirmar exigências sanitárias no município de ${municipalityLabel} (alvará/licença e inspeção).`
+      : "Confirmar exigências sanitárias no município de operação (alvará/licença e inspeção).",
+    "Mapear documentos exigidos por atividade e porte do estabelecimento.",
+    "Registrar pendências, prazo e responsável no plano de ação.",
+  ]);
+
+  return {
+    result: {
+      available: true,
+      status: findings.length > 0 ? "triggered" : "not_triggered",
+      federal: {
+        ...coverage.federal,
+        checklist: federalChecklist,
+      },
+      state: {
+        ...coverage.state,
+        checklist: stateChecklist,
+      },
+      municipal: {
+        ...coverage.municipal,
+        checklist: municipalChecklist,
+      },
+      findings,
+      obrigacoes: obligations,
+      official_links: {
+        federal: ["https://consultas.anvisa.gov.br/"],
+        state: normalizedUf ? [`https://www.google.com/search?q=vigilancia+sanitaria+${normalizedUf}`] : [],
+        municipal: municipalityLabel
+          ? [`https://www.google.com/search?q=vigilancia+sanitaria+municipal+${encodeURIComponent(municipalityLabel)}`]
+          : [],
+      },
+      coverage,
+      evidence_refs: findings.map((item) => item.finding_id),
+      limitations: [
+        "Cobertura sanitária nacional opera por maturidade de fonte e pode exigir diligência manual assistida.",
+        "Sem API estruturada nacional única para todos os entes sanitários nesta versão.",
+      ],
+    },
+    source: normalizeSourcePayload("sanitario_rule_engine", findings.length > 0 ? "success" : "not_found", {
+      latencyMs: 0,
+      statusReason: findings.length > 0 ? "rule_match" : "no_match",
+      evidenceCount: findings.length,
+    }),
+  };
+}
+
+function buildSeiProviderSearchUrl(baseUrl, interessado) {
+  const url = new URL(baseUrl);
+  url.searchParams.set("acao_externa", "protocolo_pesquisar");
+  url.searchParams.set("acao_origem_externa", "protocolo_pesquisar");
+  url.searchParams.set("id_orgao_acesso_externo", "0");
+  if (interessado) {
+    url.searchParams.set("txt_interessado", interessado);
+  }
+  return url.toString();
+}
+
+function detectAntiBotInHtml(text) {
+  const normalized = normalizeText(text);
+  return (
+    normalized.includes("cloudflare") ||
+    normalized.includes("captcha") ||
+    normalized.includes("access denied") ||
+    normalized.includes("you have been blocked") ||
+    normalized.includes("forbidden")
+  );
+}
+
+function parseSeiPublicResults(providerId, providerName, html, sourceUrl) {
+  const content = String(html ?? "");
+  const records = [];
+  const seen = new Set();
+  const anchorRegex = /<a\b[^>]*href=['"]([^'"]+)['"][^>]*>([\s\S]*?)<\/a>/gi;
+
+  for (const anchor of content.matchAll(anchorRegex)) {
+    const href = toAbsoluteUrl(sourceUrl, anchor[1]);
+    const text = stripHtml(anchor[2]);
+    const processNumberMatch = text.match(/\d{5}\.\d{6}\/\d{4}-\d{2}/);
+    if (!processNumberMatch) continue;
+    const processNumber = processNumberMatch[0];
+    const key = `${providerId}|${processNumber}|${href}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    records.push({
+      result_id: hashObject({ providerId, processNumber, href }),
+      provider_id: providerId,
+      provider_name: providerName,
+      numero_processo: processNumber,
+      orgao: providerName,
+      assunto: null,
+      data: null,
+      link: href,
+    });
+  }
+
+  if (records.length > 0) return records;
+
+  const plainProcessNumbers = [...new Set(content.match(/\d{5}\.\d{6}\/\d{4}-\d{2}/g) ?? [])];
+  for (const processNumber of plainProcessNumbers.slice(0, 25)) {
+    records.push({
+      result_id: hashObject({ providerId, processNumber }),
+      provider_id: providerId,
+      provider_name: providerName,
+      numero_processo: processNumber,
+      orgao: providerName,
+      assunto: null,
+      data: null,
+      link: sourceUrl,
+    });
+  }
+
+  return records;
+}
+
+async function agentSeiPublicoAssistido({ company }) {
+  const sourceId = "sei_publico_assistido";
+  const sourceConfig = resolveSourceConfig(sourceId, "SEI Público Assistido (ANVISA/IBAMA)", 12000);
+  const start = Date.now();
+  const cleanCnpj = normalizeCnpj(company?.cnpj);
+  const razaoSocial = pickString(company?.razao_social);
+  const queries = normalizeStringArray([razaoSocial, cleanCnpj]).slice(0, 2);
+  const providers = [
+    {
+      provider_id: "sei_anvisa_publico",
+      name: "SEI ANVISA",
+      base_url: SEI_PUBLICO_ANVISA_URL,
+    },
+    {
+      provider_id: "sei_ibama_publico",
+      name: "SEI IBAMA",
+      base_url: SEI_PUBLICO_IBAMA_URL,
+    },
+  ];
+
+  const providerStatus = [];
+  const links = [];
+  const results = [];
+
+  for (const provider of providers) {
+    const primaryQuery = queries[0] ?? "";
+    const queryUrl = buildSeiProviderSearchUrl(provider.base_url, primaryQuery);
+    links.push({
+      provider_id: provider.provider_id,
+      label: `${provider.name} — consulta por interessado`,
+      url: queryUrl,
+      query: primaryQuery || null,
+    });
+    if (queries[1]) {
+      links.push({
+        provider_id: provider.provider_id,
+        label: `${provider.name} — consulta por CNPJ`,
+        url: buildSeiProviderSearchUrl(provider.base_url, queries[1]),
+        query: queries[1],
+      });
+    }
+
+    const response = await fetchLegacyHtml(queryUrl, sourceConfig.timeoutMs, {
+      method: "GET",
+      headers: { Referer: provider.base_url },
+    });
+
+    if (!response.ok) {
+      const antiBotStatus = response.status === 401 || response.status === 403 || response.status === 429;
+      providerStatus.push({
+        provider_id: provider.provider_id,
+        name: provider.name,
+        status: "manual_required",
+        status_reason: antiBotStatus ? "anti_bot_protection" : response.status_reason,
+        query_url: queryUrl,
+      });
+      continue;
+    }
+
+    if (detectAntiBotInHtml(response.html)) {
+      providerStatus.push({
+        provider_id: provider.provider_id,
+        name: provider.name,
+        status: "manual_required",
+        status_reason: "anti_bot_protection",
+        query_url: queryUrl,
+      });
+      continue;
+    }
+
+    const parsed = parseSeiPublicResults(provider.provider_id, provider.name, response.html, queryUrl);
+    providerStatus.push({
+      provider_id: provider.provider_id,
+      name: provider.name,
+      status: parsed.length > 0 ? "success" : "not_found",
+      status_reason: parsed.length > 0 ? "ok" : "not_found",
+      query_url: queryUrl,
+    });
+    results.push(...parsed);
+  }
+
+  const hasSuccess = providerStatus.some((item) => item.status === "success");
+  const hasAntiBot = providerStatus.some((item) => item.status_reason === "anti_bot_protection");
+  const statusReason = hasSuccess ? "ok" : hasAntiBot ? "anti_bot_protection" : "not_found";
+
+  return {
+    result: {
+      available: true,
+      method: hasSuccess ? "assistido_auditavel" : "manual_required",
+      providers: providerStatus,
+      queries: queries.map((query) => ({
+        kind: normalizeCnpj(query).length === 14 ? "cnpj" : "razao_social",
+        value: query,
+      })),
+      links,
+      results,
+      status_reason: statusReason,
+      evidence_refs: results.map((item) => item.result_id),
+      limitations: [
+        "Sem bypass de captcha/anti-bot: bloqueios retornam fluxo manual assistido.",
+        "Resultados públicos podem variar por disponibilidade e configuração de cada órgão no SEI.",
+      ],
+    },
+    source: normalizeSourcePayload(sourceId, hasSuccess ? "success" : hasAntiBot ? "unavailable" : "not_found", {
+      latencyMs: Date.now() - start,
+      statusReason,
+      evidenceCount: results.length,
+      ...(hasAntiBot
+        ? { message: "Consulta SEI pública bloqueada por proteção anti-bot/captcha; fluxo manual assistido habilitado." }
+        : {}),
+    }),
+  };
+}
+
 function escapeArcGisSqlLike(value) {
   return String(value ?? "")
     .replace(/'/g, "''")
@@ -2820,23 +3770,36 @@ function extractMunicipalMatches(municipal) {
   return Array.isArray(municipal?.details?.matches) ? municipal.details.matches : [];
 }
 
-function classifyComplianceRisk({ fteDeepAnalysis, ibama, state, municipal, areasContaminadas }) {
+function classifyComplianceRisk({
+  fteDeepAnalysis,
+  ibama,
+  state,
+  municipal,
+  areasContaminadas,
+  cetesbLicencasPublicas,
+  sanitario,
+}) {
   const stateMatches = extractStateMatches(state);
   const municipalMatches = extractMunicipalMatches(municipal);
   const areaMatches = Array.isArray(areasContaminadas?.matches) ? areasContaminadas.matches : [];
+  const sanitarioFindings = Array.isArray(sanitario?.findings) ? sanitario.findings : [];
+  const cetesbLicenses = Array.isArray(cetesbLicencasPublicas?.licenses) ? cetesbLicencasPublicas.licenses : [];
 
   const highCount =
     countRisk(fteDeepAnalysis?.findings, "alto") +
     countRisk(ibama?.matches, "alto") +
     countRisk(stateMatches, "alto") +
     countRisk(municipalMatches, "alto") +
-    countRisk(areaMatches, "alto");
+    countRisk(areaMatches, "alto") +
+    countRisk(sanitarioFindings, "alto") +
+    (cetesbLicenses.length > 0 ? 1 : 0);
   const mediumCount =
     countRisk(fteDeepAnalysis?.findings, "medio") +
     countRisk(ibama?.matches, "medio") +
     countRisk(stateMatches, "medio") +
     countRisk(municipalMatches, "medio") +
-    countRisk(areaMatches, "medio");
+    countRisk(areaMatches, "medio") +
+    countRisk(sanitarioFindings, "medio");
 
   if (highCount >= 3 || (highCount >= 1 && mediumCount >= 3)) return "alto";
   if (highCount >= 1 || mediumCount >= 2) return "medio";
@@ -2851,6 +3814,9 @@ function buildEnvironmentalAiPromptInput({
   state,
   municipal,
   areasContaminadas,
+  cetesbLicencasPublicas,
+  sanitario,
+  seiPublico,
   govbrContext,
   coverage,
   evidence,
@@ -2886,6 +3852,14 @@ function buildEnvironmentalAiPromptInput({
       obrigacoes: Array.isArray(federal?.obligations) ? federal.obligations : [],
     },
     state: state ?? null,
+    cetesb_licencas_publicas: {
+      available: Boolean(cetesbLicencasPublicas?.available),
+      method: cetesbLicencasPublicas?.method ?? null,
+      query: cetesbLicencasPublicas?.query ?? null,
+      company_matches: Array.isArray(cetesbLicencasPublicas?.company_matches) ? cetesbLicencasPublicas.company_matches : [],
+      licenses: Array.isArray(cetesbLicencasPublicas?.licenses) ? cetesbLicencasPublicas.licenses : [],
+      limitations: Array.isArray(cetesbLicencasPublicas?.limitations) ? cetesbLicencasPublicas.limitations : [],
+    },
     municipal: municipal ?? null,
     areas_contaminadas: {
       available: Boolean(areasContaminadas?.available),
@@ -2895,6 +3869,24 @@ function buildEnvironmentalAiPromptInput({
       matches: Array.isArray(areasContaminadas?.matches) ? areasContaminadas.matches : [],
       limitations: Array.isArray(areasContaminadas?.limitations) ? areasContaminadas.limitations : [],
       official_map_open_url: areasContaminadas?.official_map_open_url ?? null,
+    },
+    sanitario: {
+      available: Boolean(sanitario?.available),
+      status: sanitario?.status ?? null,
+      findings: Array.isArray(sanitario?.findings) ? sanitario.findings : [],
+      obrigacoes: Array.isArray(sanitario?.obrigacoes) ? sanitario.obrigacoes : [],
+      coverage: sanitario?.coverage ?? null,
+      limitations: Array.isArray(sanitario?.limitations) ? sanitario.limitations : [],
+    },
+    sei_publico: {
+      available: Boolean(seiPublico?.available),
+      method: seiPublico?.method ?? null,
+      providers: Array.isArray(seiPublico?.providers) ? seiPublico.providers : [],
+      queries: Array.isArray(seiPublico?.queries) ? seiPublico.queries : [],
+      links: Array.isArray(seiPublico?.links) ? seiPublico.links : [],
+      results: Array.isArray(seiPublico?.results) ? seiPublico.results : [],
+      status_reason: seiPublico?.status_reason ?? null,
+      limitations: Array.isArray(seiPublico?.limitations) ? seiPublico.limitations : [],
     },
     govbr_context: govbrContext ?? null,
     coverage: coverage ?? null,
@@ -2911,6 +3903,9 @@ async function generateEnvironmentalAiReport({
   state,
   municipal,
   areasContaminadas,
+  cetesbLicencasPublicas,
+  sanitario,
+  seiPublico,
   govbrContext,
   coverage,
   evidence,
@@ -2961,6 +3956,9 @@ async function generateEnvironmentalAiReport({
     state,
     municipal,
     areasContaminadas,
+    cetesbLicencasPublicas,
+    sanitario,
+    seiPublico,
     govbrContext,
     coverage,
     evidence,
@@ -2975,7 +3973,7 @@ async function generateEnvironmentalAiReport({
         "1) Resumo Executivo",
         "2) Perfil e CNAEs",
         "3) Achados Profundos CNAE x FTE (RAG)",
-        "4) Achados Regulatórios (Federal, Estadual, Municipal e Territorial)",
+        "4) Achados Regulatórios (Federal, Estadual, CETESB Público, Municipal, Territorial, Sanitário e SEI)",
       ],
       maxTokens: 900,
       preferredTimeoutMs: Math.round(reportTimeoutMs * 0.55),
@@ -2986,14 +3984,17 @@ async function generateEnvironmentalAiReport({
         fte_deep_analysis: promptInput.fte_deep_analysis,
         federal: promptInput.federal,
         state: promptInput.state,
+        cetesb_licencas_publicas: promptInput.cetesb_licencas_publicas,
         municipal: promptInput.municipal,
         areas_contaminadas: promptInput.areas_contaminadas,
+        sanitario: promptInput.sanitario,
+        sei_publico: promptInput.sei_publico,
       },
     },
     {
       id: "ops_5_8",
       headings: [
-        "5) Contratações Públicas (gov.br)",
+        "5) Contratações Públicas (gov.br) e Consulta SEI Pública Assistida",
         "6) Plano de Ação Prioritário (30-60-90 dias)",
         "7) Checklist de Evidências para Auditoria",
         "8) Disclaimer Técnico",
@@ -3011,6 +4012,22 @@ async function generateEnvironmentalAiReport({
         summary: promptInput.summary,
         evidence: Array.isArray(promptInput.evidence) ? promptInput.evidence.slice(0, 60) : [],
         sources: Array.isArray(promptInput.sources) ? promptInput.sources : [],
+        sanitario: {
+          status: promptInput?.sanitario?.status ?? null,
+          findings: Array.isArray(promptInput?.sanitario?.findings) ? promptInput.sanitario.findings : [],
+          obrigacoes: Array.isArray(promptInput?.sanitario?.obrigacoes) ? promptInput.sanitario.obrigacoes : [],
+        },
+        sei_publico: {
+          status_reason: promptInput?.sei_publico?.status_reason ?? null,
+          providers: Array.isArray(promptInput?.sei_publico?.providers) ? promptInput.sei_publico.providers : [],
+          results: Array.isArray(promptInput?.sei_publico?.results) ? promptInput.sei_publico.results : [],
+        },
+        cetesb_licencas_publicas: {
+          method: promptInput?.cetesb_licencas_publicas?.method ?? null,
+          licenses: Array.isArray(promptInput?.cetesb_licencas_publicas?.licenses)
+            ? promptInput.cetesb_licencas_publicas.licenses
+            : [],
+        },
         areas_contaminadas: {
           method: promptInput?.areas_contaminadas?.method ?? null,
           status: promptInput?.areas_contaminadas?.status ?? null,
@@ -3146,12 +4163,12 @@ async function generateEnvironmentalAiReport({
         "## 3) Achados Profundos CNAE x FTE (RAG)",
         "Seção não concluída no orçamento de tempo desta execução.",
         "",
-        "## 4) Achados Regulatórios (Federal, Estadual, Municipal e Territorial)",
+        "## 4) Achados Regulatórios (Federal, Estadual, CETESB Público, Municipal, Territorial, Sanitário e SEI)",
         "Seção não concluída no orçamento de tempo desta execução.",
       ].join("\n"),
     sectionMap.get("ops_5_8") ||
       [
-        "## 5) Contratações Públicas (gov.br)",
+        "## 5) Contratações Públicas (gov.br) e Consulta SEI Pública Assistida",
         "Seção não concluída no orçamento de tempo desta execução.",
         "",
         "## 6) Plano de Ação Prioritário (30-60-90 dias)",
@@ -3207,6 +4224,9 @@ function buildDisclaimers() {
     "Enquadramento definitivo requer análise técnica especializada e consulta das FTEs oficiais.",
     "Cobertura nacional opera por maturidade de fontes: conectores automáticos coexistem com trilhas manuais auditáveis.",
     "Análise profunda CNAE x FTE depende do acervo RAG carregado no OpenAI Vector Store.",
+    "Consulta de licenças CETESB públicas usa portal oficial com matching determinístico por estabelecimento (SP).",
+    "Módulo sanitário opera em modo assistido/auditável com checklist por esfera quando não houver API estruturada.",
+    "Consulta SEI pública opera sem bypass de captcha/anti-bot; bloqueios retornam manual_required com trilha auditável.",
     "Áreas contaminadas usam evidências estruturadas quando há API oficial; nos demais cenários, fluxo manual assistido.",
     "Relatório de IA tem caráter de apoio e não substitui parecer técnico-jurídico especializado.",
   ];
@@ -3231,7 +4251,16 @@ function dedupeByKey(items, keyBuilder) {
   return output;
 }
 
-function buildExecutiveTopRisks({ fteDeepAnalysis, ibama, state, municipal, areasContaminadas }) {
+function buildExecutiveTopRisks({
+  fteDeepAnalysis,
+  ibama,
+  state,
+  municipal,
+  areasContaminadas,
+  cetesbLicencasPublicas,
+  sanitario,
+  seiPublico,
+}) {
   const fteRisks = Array.isArray(fteDeepAnalysis?.findings)
     ? fteDeepAnalysis.findings.map((item) => ({
         sphere: "federal",
@@ -3272,42 +4301,101 @@ function buildExecutiveTopRisks({ fteDeepAnalysis, ibama, state, municipal, area
         detail: `Match ${item?.match_id ?? "-"} com score ${Number(item?.score ?? 0).toFixed(2)}.`,
       }))
     : [];
+  const cetesbPublicRisks = Array.isArray(cetesbLicencasPublicas?.licenses)
+    ? cetesbLicencasPublicas.licenses.map((item) => ({
+        sphere: "estadual",
+        severity: "medio",
+        title: `CETESB processo ${item?.numero_processo || item?.sd_numero || "-"}`,
+        detail: item?.objeto_solicitacao || item?.situacao || "Licença/processo público CETESB identificado.",
+      }))
+    : [];
+  const sanitarioRisks = Array.isArray(sanitario?.findings)
+    ? sanitario.findings.map((item) => ({
+        sphere: "sanitario",
+        severity: item?.risco ?? "medio",
+        title: `Sanitário CNAE ${item?.cnae_codigo ?? "-"}`,
+        detail: item?.tema || "Gatilho sanitário identificado.",
+      }))
+    : [];
+  const seiRisks = Array.isArray(seiPublico?.results) && seiPublico.results.length > 0
+    ? seiPublico.results.map((item) => ({
+        sphere: "federal",
+        severity: "medio",
+        title: `SEI público ${item?.provider_name ?? ""}`.trim(),
+        detail: `Processo ${item?.numero_processo ?? "-"}`,
+      }))
+    : [];
 
   return dedupeByKey(
-    [...fteRisks, ...ibamaRisks, ...stateRisks, ...municipalRisks, ...areasRisks]
+    [...fteRisks, ...ibamaRisks, ...stateRisks, ...cetesbPublicRisks, ...municipalRisks, ...areasRisks, ...sanitarioRisks, ...seiRisks]
       .sort((a, b) => riskWeight(b.severity) - riskWeight(a.severity))
       .slice(0, 3),
     (item) => `${item.title}|${item.detail}`
   );
 }
 
-function buildExecutiveCoverageGaps({ coverage, fteDeepAnalysis, areasContaminadas }) {
+function buildExecutiveCoverageGaps({
+  coverage,
+  fteDeepAnalysis,
+  areasContaminadas,
+  cetesbLicencasPublicas,
+  sanitario,
+  seiPublico,
+}) {
   const gaps = [];
   if (coverage?.federal?.status !== "api_ready") gaps.push("Cobertura federal parcial/manual.");
   if (coverage?.state?.status !== "api_ready") gaps.push("Cobertura estadual em modo manual_required para a UF.");
   if (coverage?.municipal?.status !== "api_ready") gaps.push("Cobertura municipal em modo manual_required para o município.");
   if (coverage?.ambiental_territorial?.status !== "api_ready") gaps.push("Cobertura territorial parcial/manual.");
+  if (cetesbLicencasPublicas?.method === "portal_connector" && Number(cetesbLicencasPublicas?.licenses?.length ?? 0) === 0) {
+    gaps.push("Licenças CETESB públicas sem retorno nesta execução; confirmar manualmente no portal oficial.");
+  }
+  if (sanitario?.coverage?.municipal?.status === "manual_required") {
+    gaps.push("Sanitário municipal exige diligência manual assistida.");
+  }
+  if (seiPublico?.status_reason === "anti_bot_protection") {
+    gaps.push("SEI público bloqueado por anti-bot/captcha; fluxo manual requerido.");
+  }
   if (!fteDeepAnalysis?.available) gaps.push(`RAG/FTE em fallback: ${fteDeepAnalysis?.reason || "indisponível"}.`);
   if (areasContaminadas?.method !== "api_match") gaps.push("Áreas contaminadas exigem diligência manual assistida.");
   return normalizeStringArray(gaps).slice(0, 6);
 }
 
-function buildCriticalObligations({ federal, state, municipal, ibama }) {
+function buildCriticalObligations({ federal, state, municipal, ibama, sanitario, cetesbLicencasPublicas, seiPublico }) {
   const obligations = normalizeStringArray([
     ...(Array.isArray(federal?.obligations) ? federal.obligations : []),
     ...(Array.isArray(state?.obligations) ? state.obligations : []),
     ...(Array.isArray(municipal?.obligations) ? municipal.obligations : []),
     ...(Array.isArray(ibama?.matches) ? ibama.matches.map((item) => item?.obrigacao) : []),
+    ...(Array.isArray(sanitario?.obrigacoes) ? sanitario.obrigacoes : []),
+    ...(Array.isArray(cetesbLicencasPublicas?.licenses) && cetesbLicencasPublicas.licenses.length > 0
+      ? ["Validar situação e validade dos processos/licenças públicas CETESB do estabelecimento."]
+      : []),
+    ...(Array.isArray(seiPublico?.results) && seiPublico.results.length > 0
+      ? ["Avaliar processos SEI públicos localizados e registrar implicações no dossiê de compliance."]
+      : []),
   ]);
   return obligations.slice(0, 3);
 }
 
-function buildFallbackFlags({ fteDeepAnalysis, state, municipal, areasContaminadas, aiReport }) {
+function buildFallbackFlags({
+  fteDeepAnalysis,
+  state,
+  municipal,
+  areasContaminadas,
+  aiReport,
+  cetesbLicencasPublicas,
+  sanitario,
+  seiPublico,
+}) {
   const flags = [];
   if (!fteDeepAnalysis?.available) flags.push(`rag_fallback:${fteDeepAnalysis?.reason || "indisponível"}`);
   if (state?.mode !== "api_ready") flags.push(`state_manual:${state?.uf || "N/A"}`);
   if (municipal?.mode !== "api_ready") flags.push(`municipal_manual:${municipal?.municipio_nome || "N/A"}`);
   if (areasContaminadas?.method !== "api_match") flags.push(`territorial_manual:${areasContaminadas?.status || "manual_required"}`);
+  if (cetesbLicencasPublicas?.method === "not_applicable") flags.push("cetesb_licencas:not_applicable");
+  if (sanitario?.coverage?.municipal?.status === "manual_required") flags.push("sanitario_municipal:manual_required");
+  if (seiPublico?.status_reason === "anti_bot_protection") flags.push("sei_publico:anti_bot_protection");
   if (!aiReport?.available) flags.push(`ai_report_partial:${aiReport?.reason || "indisponível"}`);
   return flags;
 }
@@ -3342,7 +4430,19 @@ function buildConfidenceMap(evidence) {
   return map;
 }
 
-function buildActionPlan({ summary, federal, state, municipal, fteDeepAnalysis, areasContaminadas, coverage, aiReport }) {
+function buildActionPlan({
+  summary,
+  federal,
+  state,
+  municipal,
+  fteDeepAnalysis,
+  areasContaminadas,
+  coverage,
+  aiReport,
+  cetesbLicencasPublicas,
+  sanitario,
+  seiPublico,
+}) {
   const items = [];
   const pushItem = (payload) => {
     if (!payload?.title) return;
@@ -3405,6 +4505,36 @@ function buildActionPlan({ summary, federal, state, municipal, fteDeepAnalysis, 
     });
   }
 
+  if (Array.isArray(cetesbLicencasPublicas?.licenses) && cetesbLicencasPublicas.licenses.length > 0) {
+    pushItem({
+      title: "Validar situação, autenticidade e vencimento das licenças/processos públicos CETESB identificados.",
+      priority: "alta",
+      source_refs: ["state.sp.cetesb.licencas_publicas"],
+    });
+  }
+
+  if (Array.isArray(sanitario?.obrigacoes) && sanitario.obrigacoes.length > 0) {
+    pushItem({
+      title: `Executar diligência sanitária prioritária: ${sanitario.obrigacoes[0]}`,
+      priority: "alta",
+      source_refs: ["sanitario.federal.base", "sanitario.state.base", "sanitario.municipal.base"],
+    });
+  }
+
+  if (seiPublico?.status_reason === "anti_bot_protection") {
+    pushItem({
+      title: "Concluir consulta SEI em modo manual assistido e anexar evidências de bloqueio/captcha.",
+      priority: "media",
+      source_refs: ["sei.publico.assistido"],
+    });
+  } else if (Array.isArray(seiPublico?.results) && seiPublico.results.length > 0) {
+    pushItem({
+      title: "Analisar processos SEI públicos localizados e registrar impactos regulatórios.",
+      priority: "media",
+      source_refs: ["sei.publico.assistido"],
+    });
+  }
+
   if (!aiReport?.available) {
     pushItem({
       title: "Regerar relatório IA auditável após estabilizar conectores/fallbacks.",
@@ -3434,11 +4564,58 @@ function buildActionPlan({ summary, federal, state, municipal, fteDeepAnalysis, 
   };
 }
 
-function buildUxV2({ summary, federal, state, municipal, coverage, fteDeepAnalysis, ibama, areasContaminadas, aiReport, evidence }) {
-  const criticalObligations = buildCriticalObligations({ federal, state, municipal, ibama });
-  const coverageGaps = buildExecutiveCoverageGaps({ coverage, fteDeepAnalysis, areasContaminadas });
-  const topRisks = buildExecutiveTopRisks({ fteDeepAnalysis, ibama, state, municipal, areasContaminadas });
-  const fallbackFlags = buildFallbackFlags({ fteDeepAnalysis, state, municipal, areasContaminadas, aiReport });
+function buildUxV2({
+  summary,
+  federal,
+  state,
+  municipal,
+  coverage,
+  fteDeepAnalysis,
+  ibama,
+  areasContaminadas,
+  aiReport,
+  evidence,
+  cetesbLicencasPublicas,
+  sanitario,
+  seiPublico,
+}) {
+  const criticalObligations = buildCriticalObligations({
+    federal,
+    state,
+    municipal,
+    ibama,
+    sanitario,
+    cetesbLicencasPublicas,
+    seiPublico,
+  });
+  const coverageGaps = buildExecutiveCoverageGaps({
+    coverage,
+    fteDeepAnalysis,
+    areasContaminadas,
+    cetesbLicencasPublicas,
+    sanitario,
+    seiPublico,
+  });
+  const topRisks = buildExecutiveTopRisks({
+    fteDeepAnalysis,
+    ibama,
+    state,
+    municipal,
+    areasContaminadas,
+    cetesbLicencasPublicas,
+    sanitario,
+    seiPublico,
+  });
+  const fallbackFlags = buildFallbackFlags({
+    fteDeepAnalysis,
+    state,
+    municipal,
+    areasContaminadas,
+    aiReport,
+    cetesbLicencasPublicas,
+    sanitario,
+    seiPublico,
+  });
 
   return {
     executive: {
@@ -3477,8 +4654,11 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
   let ibama = null;
   let federal = null;
   let state = null;
+  let cetesbLicencasPublicas = null;
   let municipal = null;
   let areasContaminadas = null;
+  let sanitario = null;
+  let seiPublico = null;
   let govbrContext = null;
   let aiReport = null;
   let companySource = null;
@@ -3691,7 +4871,52 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
     },
   });
 
-  updateOrchestrationStep(orchestration, "agent_5_municipal", "running", {
+  updateOrchestrationStep(orchestration, "agent_5_cetesb_licencas_publicas", "running", {
+    message: "Consultando licenças públicas no portal oficial da CETESB.",
+  });
+  const cetesbLicencasResult = await agentCetesbLicencasPublicas({
+    company,
+    uf: jurisdictionContext?.uf,
+  });
+  cetesbLicencasPublicas = cetesbLicencasResult.result;
+  sources = upsertSourcePayload(sources, cetesbLicencasResult.source);
+  evidence.push(
+    buildEvidenceRecord({
+      agent: "agent_5_cetesb_licencas_publicas",
+      source: cetesbLicencasResult.source,
+      jurisdiction: `estadual:${jurisdictionContext?.uf ?? "N/A"}`,
+      ruleId: jurisdictionContext?.uf === "SP" ? "state.sp.cetesb.licencas_publicas" : "state.default.manual",
+      status:
+        cetesbLicencasResult.source?.status === "success"
+          ? "success"
+          : cetesbLicencasPublicas?.method === "not_applicable"
+          ? "not_applicable"
+          : cetesbLicencasResult.source?.status ?? "manual_required",
+      confidence: cetesbLicencasResult.source?.status === "success" ? "alta" : "baixa",
+      summary:
+        jurisdictionContext?.uf === "SP"
+          ? `${Number(cetesbLicencasPublicas?.licenses?.length ?? 0)} licença(s)/processo(s) público(s) CETESB identificados.`
+          : "Consulta de licenças CETESB não aplicável fora de SP.",
+      input: {
+        cnpj: cleanCnpj,
+        uf: jurisdictionContext?.uf ?? null,
+      },
+      output: cetesbLicencasPublicas,
+    })
+  );
+  updateOrchestrationStep(orchestration, "agent_5_cetesb_licencas_publicas", "completed", {
+    message:
+      cetesbLicencasPublicas?.method === "not_applicable"
+        ? `UF ${jurisdictionContext?.uf ?? "N/A"} fora do escopo do portal CETESB.`
+        : `${Number(cetesbLicencasPublicas?.licenses?.length ?? 0)} licença(s)/processo(s) público(s) retornado(s).`,
+    summary: {
+      method: cetesbLicencasPublicas?.method ?? "portal_connector",
+      company_matches: Number(cetesbLicencasPublicas?.company_matches?.length ?? 0),
+      licenses: Number(cetesbLicencasPublicas?.licenses?.length ?? 0),
+    },
+  });
+
+  updateOrchestrationStep(orchestration, "agent_6_municipal", "running", {
     message: "Aplicando regras municipais dinâmicas por município.",
   });
   municipal = agentMunicipalNational(company.cnaes, jurisdictionContext?.uf, jurisdictionContext?.municipio_nome);
@@ -3713,7 +4938,7 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
   sources = upsertSourcePayload(sources, municipalSource);
   evidence.push(
     buildEvidenceRecord({
-      agent: "agent_5_municipal",
+      agent: "agent_6_municipal",
       source: municipalSource,
       jurisdiction: `municipal:${jurisdictionContext?.municipio_nome ?? "N/A"}`,
       ruleId: municipal?.mode === "api_ready" ? "municipal.sp.consema_012024" : "municipal.default.manual",
@@ -3728,7 +4953,7 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
       output: municipal,
     })
   );
-  updateOrchestrationStep(orchestration, "agent_5_municipal", "completed", {
+  updateOrchestrationStep(orchestration, "agent_6_municipal", "completed", {
     message:
       municipal?.mode === "api_ready"
         ? `${municipalMatches.length} achado(s) municipal(is) identificado(s).`
@@ -3740,7 +4965,7 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
     },
   });
 
-  updateOrchestrationStep(orchestration, "agent_6_areas_contaminadas", "running", {
+  updateOrchestrationStep(orchestration, "agent_7_areas_contaminadas", "running", {
     message: "Executando motor de áreas contaminadas (api_match/manual).",
   });
   const areasResult = await agentAreasContaminadasNational(company, jurisdictionContext?.uf);
@@ -3748,7 +4973,7 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
   sources = upsertSourcePayload(sources, areasResult.source);
   evidence.push(
     buildEvidenceRecord({
-      agent: "agent_6_areas_contaminadas",
+      agent: "agent_7_areas_contaminadas",
       source: areasResult.source,
       jurisdiction: `ambiental_territorial:${jurisdictionContext?.uf ?? "N/A"}`,
       ruleId:
@@ -3766,7 +4991,7 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
       output: areasContaminadas,
     })
   );
-  updateOrchestrationStep(orchestration, "agent_6_areas_contaminadas", "completed", {
+  updateOrchestrationStep(orchestration, "agent_7_areas_contaminadas", "completed", {
     message: `${areasContaminadas?.matches?.length ?? 0} match(es) territorial(is) retornado(s).`,
     summary: {
       method: areasContaminadas?.method ?? "manual_required",
@@ -3775,27 +5000,132 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
     },
   });
 
+  updateOrchestrationStep(orchestration, "agent_8_sanitario", "running", {
+    message: "Aplicando motor sanitário nacional por CNAE.",
+  });
+  const sanitarioResult = agentSanitarioNational({
+    company,
+    uf: jurisdictionContext?.uf,
+    municipioNome: jurisdictionContext?.municipio_nome,
+  });
+  sanitario = sanitarioResult.result;
+  sources = upsertSourcePayload(sources, sanitarioResult.source);
+  evidence.push(
+    buildEvidenceRecord({
+      agent: "agent_8_sanitario",
+      source: sanitarioResult.source,
+      jurisdiction: `sanitario:${jurisdictionContext?.uf ?? "N/A"}`,
+      ruleId: "sanitario.federal.base",
+      status: Array.isArray(sanitario?.findings) && sanitario.findings.length > 0 ? "success" : "not_found",
+      confidence: Array.isArray(sanitario?.findings) && sanitario.findings.length > 0 ? "alta" : "media",
+      summary:
+        Array.isArray(sanitario?.findings) && sanitario.findings.length > 0
+          ? `${sanitario.findings.length} gatilho(s) sanitário(s) identificado(s).`
+          : "Sem gatilhos sanitários determinísticos para os CNAEs desta execução.",
+      input: { cnaes: company?.cnaes ?? [], uf: jurisdictionContext?.uf ?? null },
+      output: sanitario,
+    })
+  );
+  updateOrchestrationStep(orchestration, "agent_8_sanitario", "completed", {
+    message:
+      Array.isArray(sanitario?.findings) && sanitario.findings.length > 0
+        ? `${sanitario.findings.length} gatilho(s) sanitário(s) identificado(s).`
+        : "Sem gatilhos sanitários no recorte desta execução.",
+    summary: {
+      findings: Number(sanitario?.findings?.length ?? 0),
+      obligations: Number(sanitario?.obrigacoes?.length ?? 0),
+      available: Boolean(sanitario?.available),
+    },
+  });
+
+  updateOrchestrationStep(orchestration, "agent_9_sei_publico", "running", {
+    message: "Gerando consultas oficiais SEI em modo assistido auditável.",
+  });
+  const seiResult = await agentSeiPublicoAssistido({ company });
+  seiPublico = seiResult.result;
+  sources = upsertSourcePayload(sources, seiResult.source);
+  evidence.push(
+    buildEvidenceRecord({
+      agent: "agent_9_sei_publico",
+      source: seiResult.source,
+      jurisdiction: "federal",
+      ruleId: "sei.publico.assistido",
+      status:
+        seiResult.source?.status === "success"
+          ? "success"
+          : seiPublico?.status_reason === "anti_bot_protection"
+          ? "manual_required"
+          : seiResult.source?.status ?? "not_found",
+      confidence: seiResult.source?.status === "success" ? "media" : "baixa",
+      summary:
+        Array.isArray(seiPublico?.results) && seiPublico.results.length > 0
+          ? `${seiPublico.results.length} processo(s) público(s) SEI identificado(s).`
+          : seiPublico?.status_reason === "anti_bot_protection"
+          ? "Consulta SEI com bloqueio anti-bot/captcha; fluxo manual assistido habilitado."
+          : "Sem processos públicos SEI localizados nesta execução.",
+      input: {
+        razao_social: company?.razao_social ?? null,
+        cnpj: cleanCnpj,
+      },
+      output: seiPublico,
+    })
+  );
+  updateOrchestrationStep(orchestration, "agent_9_sei_publico", "completed", {
+    message:
+      Array.isArray(seiPublico?.results) && seiPublico.results.length > 0
+        ? `${seiPublico.results.length} processo(s) público(s) SEI identificado(s).`
+        : seiPublico?.status_reason === "anti_bot_protection"
+        ? "Consulta SEI bloqueada por anti-bot/captcha (manual_required)."
+        : "Sem processos públicos SEI no recorte desta execução.",
+    summary: {
+      method: seiPublico?.method ?? "manual_required",
+      providers: Number(seiPublico?.providers?.length ?? 0),
+      results: Number(seiPublico?.results?.length ?? 0),
+      status_reason: seiPublico?.status_reason ?? "not_found",
+    },
+  });
+
   const fteAlerts = countRisk(fteDeepAnalysis?.findings, "alto") + countRisk(fteDeepAnalysis?.findings, "medio");
   const stateAlerts = stateMatches.length;
+  const cetesbLicencasAlerts = Number(cetesbLicencasPublicas?.licenses?.length ?? 0);
   const municipalAlerts = municipalMatches.length;
   const areaAlerts = Number(areasContaminadas?.matches?.length ?? 0);
-  const federalAlerts = Number(ibama.matches?.length ?? 0) + Number(fteAlerts ?? 0);
+  const sanitarioAlerts = Number(sanitario?.findings?.length ?? 0);
+  const seiAlerts = Number(seiPublico?.results?.length ?? 0);
+  const federalAlerts = Number(ibama.matches?.length ?? 0) + Number(fteAlerts ?? 0) + Number(seiAlerts ?? 0);
   const totalAlerts =
-    federalAlerts + Number(stateAlerts ?? 0) + Number(municipalAlerts ?? 0) + Number(areaAlerts ?? 0);
-  const riskLevel = classifyComplianceRisk({ fteDeepAnalysis, ibama, state, municipal, areasContaminadas });
+    federalAlerts +
+    Number(stateAlerts ?? 0) +
+    Number(cetesbLicencasAlerts ?? 0) +
+    Number(municipalAlerts ?? 0) +
+    Number(areaAlerts ?? 0) +
+    Number(sanitarioAlerts ?? 0);
+  const riskLevel = classifyComplianceRisk({
+    fteDeepAnalysis,
+    ibama,
+    state,
+    municipal,
+    areasContaminadas,
+    cetesbLicencasPublicas,
+    sanitario,
+  });
   const summary = {
     total_alerts: totalAlerts,
     fte_alerts: Number(fteAlerts ?? 0),
     ibama_alerts: Number(ibama.matches?.length ?? 0),
     state_alerts: Number(stateAlerts ?? 0),
+    cetesb_licencas_alerts: Number(cetesbLicencasAlerts ?? 0),
     municipal_alerts: Number(municipalAlerts ?? 0),
     areas_alerts: Number(areaAlerts ?? 0),
+    sanitario_alerts: Number(sanitarioAlerts ?? 0),
+    sei_alerts: Number(seiAlerts ?? 0),
     cetesb_alerts: Number(stateAlerts ?? 0),
     by_sphere: {
       federal: federalAlerts,
-      estadual: Number(stateAlerts ?? 0),
-      municipal: Number(municipalAlerts ?? 0),
+      estadual: Number(stateAlerts ?? 0) + Number(cetesbLicencasAlerts ?? 0),
+      municipal: Number(municipalAlerts ?? 0) + Number(sanitarioAlerts ?? 0),
       ambiental_territorial: Number(areaAlerts ?? 0),
+      sanitario: Number(sanitarioAlerts ?? 0),
     },
     coverage_status: {
       federal: coverage?.federal?.status ?? null,
@@ -3806,7 +5136,7 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
     risk_level: riskLevel,
   };
 
-  updateOrchestrationStep(orchestration, "agent_7_relatorio_ai", "running", {
+  updateOrchestrationStep(orchestration, "agent_10_relatorio_ai", "running", {
     message: "Gerando relatório de IA auditável a partir das evidências coletadas.",
   });
   const aiResult = await generateEnvironmentalAiReport({
@@ -3817,6 +5147,9 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
     state,
     municipal,
     areasContaminadas,
+    cetesbLicencasPublicas,
+    sanitario,
+    seiPublico,
     govbrContext,
     coverage,
     evidence,
@@ -3827,7 +5160,7 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
   sources = upsertSourcePayload(sources, aiResult.source);
   evidence.push(
     buildEvidenceRecord({
-      agent: "agent_7_relatorio_ai",
+      agent: "agent_10_relatorio_ai",
       source: aiResult.source,
       jurisdiction: "federal",
       status: aiResult.source.status === "success" ? "success" : "partial",
@@ -3843,7 +5176,7 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
       output: aiReport,
     })
   );
-  updateOrchestrationStep(orchestration, "agent_7_relatorio_ai", "completed", {
+  updateOrchestrationStep(orchestration, "agent_10_relatorio_ai", "completed", {
     message: aiReport?.available
       ? "Relatório IA gerado com sucesso."
       : `Relatório IA indisponível: ${aiReport?.reason ?? "motivo não informado"}`,
@@ -3896,6 +5229,9 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
     areasContaminadas,
     aiReport,
     evidence,
+    cetesbLicencasPublicas,
+    sanitario,
+    seiPublico,
   });
   const actionPlan = buildActionPlan({
     summary,
@@ -3906,6 +5242,9 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
     areasContaminadas,
     coverage,
     aiReport,
+    cetesbLicencasPublicas,
+    sanitario,
+    seiPublico,
   });
 
   return {
@@ -3915,8 +5254,11 @@ export async function analyzeEnvironmentalCompliance(cnpj) {
     company,
     federal,
     state,
+    cetesb_licencas_publicas: cetesbLicencasPublicas,
     municipal,
     areas_contaminadas: areasContaminadas,
+    sanitario,
+    sei_publico: seiPublico,
     coverage,
     evidence,
     source_catalog: sourceCatalog,

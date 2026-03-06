@@ -23,7 +23,7 @@ export interface EnvironmentalCompany {
 export interface EnvironmentalSource {
   id: string;
   name: string;
-  status: "success" | "error" | "not_found" | "unavailable";
+  status: "success" | "error" | "not_found" | "unavailable" | "partial" | "manual_required" | "not_applicable";
   latency_ms: number;
   status_reason: string;
   evidence_count?: number;
@@ -122,6 +122,56 @@ export interface CetesbResult {
   };
 }
 
+export interface CetesbLicencaPublicaCompanyMatch {
+  match_id: string;
+  candidate_url: string;
+  razao_social: string | null;
+  municipio: string | null;
+  logradouro: string | null;
+  cnpj: string | null;
+  score: number;
+  match_level: "alto" | "medio" | "baixo" | "sem_match";
+  criteria: {
+    cnpj_exact: boolean;
+    razao_social_match: boolean;
+    municipio_match: boolean;
+    logradouro_match: boolean;
+  };
+  licenses_count: number;
+}
+
+export interface CetesbLicencaPublica {
+  sd_numero: string | null;
+  data_sd: string | null;
+  numero_processo: string | null;
+  objeto_solicitacao: string | null;
+  numero_documento: string | null;
+  situacao: string | null;
+  desde: string | null;
+  documento_autenticidade_url: string | null;
+  match_id?: string;
+}
+
+export interface CetesbLicencasPublicasResult {
+  available: boolean;
+  method: "portal_connector" | "not_applicable" | string;
+  query: {
+    cnpj: string | null;
+    uf: string | null;
+    razao_social?: string | null;
+    municipio?: string | null;
+  };
+  company_matches: CetesbLicencaPublicaCompanyMatch[];
+  licenses: CetesbLicencaPublica[];
+  official_links: {
+    consulta_url: string;
+    resultado_url: string;
+    autenticidade_base_url: string;
+  };
+  evidence_refs: string[];
+  limitations: string[];
+}
+
 export interface MunicipalMatch {
   cnae: string;
   descricao: string;
@@ -168,6 +218,90 @@ export interface AreasContaminadasResult {
   matches: AreaMatch[];
   official_map_embed_url: string;
   official_map_open_url: string;
+  evidence_refs: string[];
+  limitations: string[];
+}
+
+export interface SanitarioCoverageItem {
+  status: "api_ready" | "portal" | "manual_required" | string;
+  mode: string;
+  source_id: string;
+  label?: string;
+}
+
+export interface SanitarioFinding {
+  finding_id: string;
+  cnae_codigo: string;
+  cnae_descricao: string;
+  principal: boolean;
+  tema: string;
+  risco: "alto" | "medio" | "baixo" | string;
+  trigger_strategy: string;
+  obrigacoes: string[];
+  esferas: string[];
+}
+
+export interface SanitarioResult {
+  available: boolean;
+  status: "triggered" | "not_triggered" | string;
+  federal: SanitarioCoverageItem & { checklist: string[] };
+  state: SanitarioCoverageItem & { checklist: string[] };
+  municipal: SanitarioCoverageItem & { checklist: string[] };
+  findings: SanitarioFinding[];
+  obrigacoes: string[];
+  official_links: {
+    federal: string[];
+    state: string[];
+    municipal: string[];
+  };
+  coverage: {
+    federal: SanitarioCoverageItem;
+    state: SanitarioCoverageItem;
+    municipal: SanitarioCoverageItem;
+  };
+  evidence_refs: string[];
+  limitations: string[];
+}
+
+export interface SeiPublicoProvider {
+  provider_id: string;
+  name: string;
+  status: "success" | "not_found" | "manual_required" | "unavailable" | string;
+  status_reason: string;
+  query_url: string;
+}
+
+export interface SeiPublicoQuery {
+  kind: "razao_social" | "cnpj" | string;
+  value: string;
+}
+
+export interface SeiPublicoLink {
+  provider_id: string;
+  label: string;
+  url: string;
+  query: string | null;
+}
+
+export interface SeiPublicoProcesso {
+  result_id: string;
+  provider_id: string;
+  provider_name: string;
+  numero_processo: string;
+  orgao: string | null;
+  assunto: string | null;
+  data: string | null;
+  link: string;
+}
+
+export interface SeiPublicoResult {
+  available: boolean;
+  method: "assistido_auditavel" | "manual_required" | string;
+  providers: SeiPublicoProvider[];
+  queries: SeiPublicoQuery[];
+  links: SeiPublicoLink[];
+  results: SeiPublicoProcesso[];
+  status_reason: string;
   evidence_refs: string[];
   limitations: string[];
 }
@@ -290,14 +424,18 @@ export interface EnvironmentalSummary {
   fte_alerts: number;
   ibama_alerts: number;
   state_alerts: number;
+  cetesb_licencas_alerts?: number;
   municipal_alerts: number;
   areas_alerts: number;
+  sanitario_alerts?: number;
+  sei_alerts?: number;
   cetesb_alerts: number;
   by_sphere: {
     federal: number;
     estadual: number;
     municipal: number;
     ambiental_territorial: number;
+    sanitario?: number;
   };
   coverage_status: {
     federal: string | null;
@@ -416,8 +554,11 @@ export interface EnvironmentalComplianceResult {
   company: EnvironmentalCompany;
   federal: FederalResult;
   state: NationalStateResult;
+  cetesb_licencas_publicas?: CetesbLicencasPublicasResult;
   municipal: NationalMunicipalResult;
   areas_contaminadas: AreasContaminadasResult;
+  sanitario?: SanitarioResult;
+  sei_publico?: SeiPublicoResult;
   coverage: CoverageMatrix;
   evidence: EvidenceRecord[];
   source_catalog?: Record<string, unknown>;

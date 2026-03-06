@@ -1,4 +1,4 @@
-export const ENV_RULE_CATALOG_VERSION = (process.env.ENV_RULE_CATALOG_VERSION ?? "2026.03.05.1").trim();
+export const ENV_RULE_CATALOG_VERSION = (process.env.ENV_RULE_CATALOG_VERSION ?? "2026.03.06.1").trim();
 
 const RULES = [
   {
@@ -26,6 +26,19 @@ const RULES = [
     condicao: "CNAE aderente a atividades tratadas como fonte de poluicao no estado de SP",
     severidade: "alto",
     obrigacao_resultante: "Avaliar necessidade de LP/LI/LO junto a CETESB, inclusive precedencia de LP quando aplicavel.",
+  },
+  {
+    rule_id: "state.sp.cetesb.licencas_publicas",
+    jurisdicao: "estadual:SP",
+    esfera: "estadual",
+    base_legal: [
+      "Portal oficial de licenciamento CETESB (consulta pública de processos/licenças)",
+      "Lei Estadual SP no 997/76",
+      "Decreto SP no 8.468/76",
+    ],
+    condicao: "Registro público de processo/licença identificado no portal CETESB por CNPJ/estabelecimento",
+    severidade: "alto",
+    obrigacao_resultante: "Validar situação e autenticidade documental das licenças/processos identificados e manter dossiê auditável.",
   },
   {
     rule_id: "state.default.manual",
@@ -56,6 +69,46 @@ const RULES = [
     condicao: "Municipio sem conector estruturado no motor automatico",
     severidade: "baixo",
     obrigacao_resultante: "Executar checklist assistido do licenciamento local com validacao documental.",
+  },
+  {
+    rule_id: "sanitario.federal.base",
+    jurisdicao: "federal",
+    esfera: "sanitario",
+    base_legal: [
+      "Lei no 6.360/1976",
+      "Lei no 9.782/1999 (ANVISA)",
+      "Normas do Sistema Nacional de Vigilância Sanitária (SNVS)",
+    ],
+    condicao: "CNAE com gatilho sanitário para produtos/serviços sujeitos à vigilância sanitária",
+    severidade: "alto",
+    obrigacao_resultante: "Verificar regularização sanitária federal aplicável (AFE/AE/registro/notificação) conforme atividade efetivamente exercida.",
+  },
+  {
+    rule_id: "sanitario.state.base",
+    jurisdicao: "estadual:*",
+    esfera: "sanitario",
+    base_legal: ["Normas da vigilância sanitária estadual competente"],
+    condicao: "Atividade sujeita a requisitos sanitários no âmbito estadual",
+    severidade: "medio",
+    obrigacao_resultante: "Executar diligência assistida junto à vigilância sanitária estadual e registrar evidências.",
+  },
+  {
+    rule_id: "sanitario.municipal.base",
+    jurisdicao: "municipal:*",
+    esfera: "sanitario",
+    base_legal: ["Normas de vigilância sanitária municipal aplicáveis"],
+    condicao: "Atividade sujeita a licenciamento/alvará sanitário municipal",
+    severidade: "medio",
+    obrigacao_resultante: "Executar checklist municipal de vigilância sanitária com responsável, prazo e status.",
+  },
+  {
+    rule_id: "sei.publico.assistido",
+    jurisdicao: "federal",
+    esfera: "federal",
+    base_legal: ["Portais oficiais de consulta pública SEI dos órgãos competentes"],
+    condicao: "Consulta pública SEI por interessado (razão social/CNPJ) com trilha auditável",
+    severidade: "medio",
+    obrigacao_resultante: "Registrar resultados públicos SEI ou evidência de bloqueio anti-bot/captcha em diligência manual assistida.",
   },
   {
     rule_id: "territorial.sp.areas_contaminadas",

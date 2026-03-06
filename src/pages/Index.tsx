@@ -7,6 +7,7 @@ import type {
   ActionPlanStatus,
   AreasContaminadasScreenshotCapture,
   AreasContaminadasResult,
+  CetesbLicencasPublicasResult,
   EnvironmentalActionPlanItem,
   EnvironmentalAiReport,
   EnvironmentalCompany,
@@ -15,6 +16,8 @@ import type {
   IbamaResult,
   NationalMunicipalResult,
   NationalStateResult,
+  SanitarioResult,
+  SeiPublicoResult,
 } from "@/types/environmental";
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
@@ -26,6 +29,20 @@ const COMPLIANCE_BASE_ENDPOINT = API_BASE_URL ? `${API_BASE_URL}/api/environment
 const AREAS_SCREENSHOT_ENDPOINT = API_BASE_URL
   ? `${API_BASE_URL}/api/areas-contaminadas/screenshot`
   : "/api/areas-contaminadas/screenshot";
+const TOTAL_AGENTS = 10;
+const FINAL_AGENT_STAGE = TOTAL_AGENTS + 1;
+const AGENT_LOADING_LABELS = [
+  "CNPJ/CNAE",
+  "RAG CNAE x FTE",
+  "Federal",
+  "Estadual",
+  "CETESB Público",
+  "Municipal",
+  "Áreas Contam.",
+  "Sanitário",
+  "SEI Público",
+  "Relatório IA",
+];
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -399,7 +416,7 @@ function buildAiFallback(raw: Record<string, any>, payload: EnvironmentalComplia
     ? raw.sources.find((item: any) => item?.id === "openai_relatorio_ambiental")
     : null;
   const orchestrationStep = Array.isArray(raw?.orchestration?.steps)
-    ? raw.orchestration.steps.find((step: any) => step?.agent === "agent_7_relatorio_ai")
+    ? raw.orchestration.steps.find((step: any) => step?.agent === "agent_10_relatorio_ai")
     : null;
   const reasonParts = [
     typeof source?.status_reason === "string" ? source.status_reason : "",
@@ -416,6 +433,8 @@ function humanizeCoverageStatus(status: string | null | undefined) {
   const normalized = String(status ?? "").toLowerCase();
   if (normalized === "api_ready") return "Automatizado";
   if (normalized === "manual_required") return "Revisão manual necessária";
+  if (normalized === "portal") return "Consulta assistida";
+  if (normalized === "not_applicable") return "Não aplicável";
   return "Parcial";
 }
 
@@ -432,6 +451,9 @@ function humanizeSourceStatus(status: string | null | undefined) {
   if (normalized === "success") return "Sucesso";
   if (normalized === "not_found") return "Sem achados";
   if (normalized === "unavailable") return "Indisponível";
+  if (normalized === "manual_required") return "Consulta manual";
+  if (normalized === "not_applicable") return "Não aplicável";
+  if (normalized === "partial") return "Parcial";
   if (normalized === "error") return "Falha";
   return "Parcial";
 }
@@ -512,6 +534,114 @@ function defaultMunicipalLegacyResult() {
       municipios_habilitados: "",
     },
     nota: "",
+  };
+}
+
+function defaultCetesbLicencasPublicasResult(uf: string | null | undefined): CetesbLicencasPublicasResult {
+  return {
+    available: false,
+    method: uf === "SP" ? "portal_connector" : "not_applicable",
+    query: {
+      cnpj: null,
+      uf: uf ? String(uf) : null,
+    },
+    company_matches: [],
+    licenses: [],
+    official_links: {
+      consulta_url: "https://licenciamento.cetesb.sp.gov.br/cetesb/processo_consulta.asp",
+      resultado_url: "https://licenciamento.cetesb.sp.gov.br/cetesb/processo_resultado.asp",
+      autenticidade_base_url: "http://autenticidade.cetesb.sp.gov.br/autentica.php",
+    },
+    evidence_refs: [],
+    limitations: uf === "SP" ? ["Sem retorno estruturado de CETESB público nesta execução."] : ["Não aplicável fora de SP."],
+  };
+}
+
+function defaultSanitarioResult(uf: string | null | undefined, municipioNome: string | null | undefined): SanitarioResult {
+  const labelUf = uf ? String(uf) : "UF";
+  const labelMunicipio = municipioNome ? String(municipioNome) : "município";
+  return {
+    available: true,
+    status: "not_triggered",
+    federal: {
+      status: "portal",
+      mode: "portal",
+      source_id: "sanitario_anvisa_portal",
+      label: "Consulta pública federal (ANVISA/SNVS)",
+      checklist: [
+        "Consultar regularização sanitária no portal oficial da ANVISA.",
+      ],
+    },
+    state: {
+      status: "portal",
+      mode: "portal",
+      source_id: "sanitario_vigilancia_estadual",
+      label: `Consulta assistida da vigilância estadual (${labelUf})`,
+      checklist: [`Confirmar exigências da vigilância sanitária estadual em ${labelUf}.`],
+    },
+    municipal: {
+      status: "manual_required",
+      mode: "manual_required",
+      source_id: "sanitario_vigilancia_municipal",
+      label: `Checklist sanitário municipal (${labelMunicipio})`,
+      checklist: [`Executar checklist de licença/alvará sanitário no município de ${labelMunicipio}.`],
+    },
+    findings: [],
+    obrigacoes: [],
+    official_links: {
+      federal: ["https://consultas.anvisa.gov.br/"],
+      state: [],
+      municipal: [],
+    },
+    coverage: {
+      federal: {
+        status: "portal",
+        mode: "portal",
+        source_id: "sanitario_anvisa_portal",
+        label: "Consulta pública federal (ANVISA/SNVS)",
+      },
+      state: {
+        status: "portal",
+        mode: "portal",
+        source_id: "sanitario_vigilancia_estadual",
+        label: `Consulta assistida da vigilância estadual (${labelUf})`,
+      },
+      municipal: {
+        status: "manual_required",
+        mode: "manual_required",
+        source_id: "sanitario_vigilancia_municipal",
+        label: `Checklist sanitário municipal (${labelMunicipio})`,
+      },
+    },
+    evidence_refs: [],
+    limitations: ["Sem gatilhos sanitários estruturados nesta execução."],
+  };
+}
+
+function defaultSeiPublicoResult(): SeiPublicoResult {
+  return {
+    available: true,
+    method: "manual_required",
+    providers: [],
+    queries: [],
+    links: [
+      {
+        provider_id: "sei_anvisa_publico",
+        label: "SEI ANVISA — consulta pública",
+        url: "https://sei.anvisa.gov.br/sei/modulos/pesquisa/md_pesq_processo_pesquisar.php?acao_externa=protocolo_pesquisar&acao_origem_externa=protocolo_pesquisar&id_orgao_acesso_externo=0",
+        query: null,
+      },
+      {
+        provider_id: "sei_ibama_publico",
+        label: "SEI IBAMA — consulta pública",
+        url: "https://sei.ibama.gov.br/sei/modulos/pesquisa/md_pesq_processo_pesquisar.php?acao_externa=protocolo_pesquisar&acao_origem_externa=protocolo_pesquisar&id_orgao_acesso_externo=0",
+        query: null,
+      },
+    ],
+    results: [],
+    status_reason: "manual_required",
+    evidence_refs: [],
+    limitations: ["Consulta SEI em fluxo assistido; captcha/anti-bot pode exigir execução manual."],
   };
 }
 
@@ -607,8 +737,11 @@ export default function Index() {
   const [resultFteDeep, setResultFteDeep] = useState<FteDeepAnalysis | null>(null);
   const [resultIBAMA, setResultIBAMA] = useState<IbamaResult | null>(null);
   const [resultState, setResultState] = useState<NationalStateResult | null>(null);
+  const [resultCetesbLicencasPublicas, setResultCetesbLicencasPublicas] = useState<CetesbLicencasPublicasResult | null>(null);
   const [resultMunicipal, setResultMunicipal] = useState<NationalMunicipalResult | null>(null);
   const [resultAreas, setResultAreas] = useState<AreasContaminadasResult | null>(null);
+  const [resultSanitario, setResultSanitario] = useState<SanitarioResult | null>(null);
+  const [resultSeiPublico, setResultSeiPublico] = useState<SeiPublicoResult | null>(null);
   const [resultAreasCapture, setResultAreasCapture] = useState<AreasContaminadasScreenshotCapture | null>(null);
   const [capturingAreas, setCapturingAreas] = useState(false);
   const [resultAI, setResultAI] = useState<EnvironmentalAiReport | null>(null);
@@ -624,8 +757,11 @@ export default function Index() {
     setResultFteDeep(null);
     setResultIBAMA(null);
     setResultState(null);
+    setResultCetesbLicencasPublicas(null);
     setResultMunicipal(null);
     setResultAreas(null);
+    setResultSanitario(null);
+    setResultSeiPublico(null);
     setResultAreasCapture(null);
     setCapturingAreas(false);
     setResultAI(null);
@@ -657,6 +793,8 @@ export default function Index() {
     options: { animate: boolean; runCapture: boolean }
   ) => {
     const raw = payload as unknown as Record<string, any>;
+    const companyUf = String(raw?.jurisdiction_context?.uf ?? raw?.company?.uf ?? "").toUpperCase() || null;
+    const companyMunicipio = String(raw?.jurisdiction_context?.municipio_nome ?? raw?.company?.municipio ?? "").trim() || null;
     setFullResult(payload);
     setDadosCNPJ(payload.company);
     setCnpj(formatCNPJ(payload.cnpj || ""));
@@ -667,7 +805,7 @@ export default function Index() {
       await wait(120);
       setCurrentAgent(2);
     } else {
-      setCurrentAgent(8);
+      setCurrentAgent(FINAL_AGENT_STAGE);
     }
 
     const normalizedFteDeep =
@@ -706,6 +844,16 @@ export default function Index() {
       await wait(120);
       setCurrentAgent(5);
     }
+    const normalizedCetesbLicencasPublicas: CetesbLicencasPublicasResult =
+      raw?.cetesb_licencas_publicas && typeof raw.cetesb_licencas_publicas === "object"
+        ? (raw.cetesb_licencas_publicas as CetesbLicencasPublicasResult)
+        : defaultCetesbLicencasPublicasResult(companyUf);
+    setResultCetesbLicencasPublicas(normalizedCetesbLicencasPublicas);
+
+    if (options.animate) {
+      await wait(120);
+      setCurrentAgent(6);
+    }
     const legacyMunicipal =
       raw?.municipal_legacy ??
       (raw?.municipal && (!raw.municipal.details || raw.municipal.mode == null) ? raw.municipal : null);
@@ -728,7 +876,7 @@ export default function Index() {
 
     if (options.animate) {
       await wait(120);
-      setCurrentAgent(6);
+      setCurrentAgent(7);
     }
     const normalizedAreas: AreasContaminadasResult =
       raw?.areas_contaminadas && Array.isArray(raw.areas_contaminadas.matches)
@@ -748,6 +896,26 @@ export default function Index() {
               : ["Contrato legado detectado; mantendo modo manual assistido."],
         };
     setResultAreas(normalizedAreas);
+
+    if (options.animate) {
+      await wait(120);
+      setCurrentAgent(8);
+    }
+    const normalizedSanitario: SanitarioResult =
+      raw?.sanitario && typeof raw.sanitario === "object"
+        ? (raw.sanitario as SanitarioResult)
+        : defaultSanitarioResult(companyUf, companyMunicipio);
+    setResultSanitario(normalizedSanitario);
+
+    if (options.animate) {
+      await wait(120);
+      setCurrentAgent(9);
+    }
+    const normalizedSeiPublico: SeiPublicoResult =
+      raw?.sei_publico && typeof raw.sei_publico === "object"
+        ? (raw.sei_publico as SeiPublicoResult)
+        : defaultSeiPublicoResult();
+    setResultSeiPublico(normalizedSeiPublico);
 
     if (rawActionPlanItems.length > 0) {
       setActionPlanItems(rawActionPlanItems);
@@ -770,13 +938,13 @@ export default function Index() {
 
     if (options.animate) {
       await wait(120);
-      setCurrentAgent(7);
+      setCurrentAgent(10);
     }
     setResultAI(buildAiFallback(raw, payload));
 
     if (options.animate) {
       await wait(100);
-      setCurrentAgent(8);
+      setCurrentAgent(FINAL_AGENT_STAGE);
     }
   };
 
@@ -933,6 +1101,14 @@ export default function Index() {
       status: resultAreas?.method === "api_match" ? "api_ready" : "manual_required",
       mode: resultAreas?.method ?? "manual",
     },
+  };
+  const sanitarioCoverageView = {
+    status: resultSanitario ? resultSanitario.municipal.status : "manual_required",
+    mode: resultSanitario ? resultSanitario.municipal.mode : "manual_required",
+  };
+  const seiCoverageView = {
+    status: resultSeiPublico?.status_reason === "ok" ? "api_ready" : "manual_required",
+    mode: resultSeiPublico?.method ?? "manual_required",
   };
   const fallbackExecutiveView = useMemo(
     () => buildExecutiveFallback(fullResult, fteDeepView, resultAreas),
@@ -1186,6 +1362,105 @@ export default function Index() {
     });
   };
 
+  const openCetesbLicencaPublicaDetails = (item: CetesbLicencasPublicasResult["licenses"][number]) => {
+    const links = dedupeDetailLinks([
+      ...(item?.documento_autenticidade_url
+        ? [
+            {
+              label: "Validar autenticidade do documento",
+              href: item.documento_autenticidade_url,
+            },
+          ]
+        : []),
+      ...(resultCetesbLicencasPublicas?.official_links?.consulta_url
+        ? [
+            {
+              label: "Consulta pública CETESB",
+              href: resultCetesbLicencasPublicas.official_links.consulta_url,
+            },
+          ]
+        : []),
+    ]);
+    const situacao = String(item?.situacao ?? "").toLowerCase();
+    const risk = situacao.includes("indefer") || situacao.includes("cancel") ? "alto" : "medio";
+    setDetailPanelItem({
+      kind: "state",
+      title: `CETESB Público - ${item.numero_processo || item.sd_numero || "Processo sem número"}`,
+      subtitle: item.objeto_solicitacao || "Detalhe da licença/processo público",
+      risk,
+      status: item.situacao || "sem situação",
+      description: item.objeto_solicitacao || "Sem objeto detalhado na consulta pública.",
+      sections: [
+        {
+          title: "Identificação",
+          items: [
+            `SD: ${item.sd_numero || "-"}`,
+            `Data SD: ${item.data_sd || "-"}`,
+            `Número do processo: ${item.numero_processo || "-"}`,
+            `Número do documento: ${item.numero_documento || "-"}`,
+          ],
+        },
+        {
+          title: "Situação",
+          items: [`Situação: ${item.situacao || "-"}`, `Desde: ${item.desde || "-"}`],
+        },
+      ],
+      links,
+      raw: item,
+    });
+  };
+
+  const openSanitarioFindingDetails = (item: SanitarioResult["findings"][number]) => {
+    setDetailPanelItem({
+      kind: "municipal",
+      title: `Sanitário - CNAE ${item.cnae_codigo}`,
+      subtitle: item.cnae_descricao,
+      risk: item.risco,
+      status: item.tema,
+      description: `Gatilho sanitário por estratégia ${item.trigger_strategy}.`,
+      sections: [
+        { title: "Tema sanitário", items: [item.tema] },
+        { title: "Esferas afetadas", items: item.esferas || [] },
+        { title: "Obrigações sanitárias", items: item.obrigacoes || [] },
+      ],
+      links: dedupeDetailLinks([
+        ...((resultSanitario?.official_links?.federal ?? []).map((href, index) => ({
+          label: `Link federal ${index + 1}`,
+          href,
+        })) as DetailPanelLink[]),
+        ...((resultSanitario?.official_links?.state ?? []).map((href, index) => ({
+          label: `Link estadual ${index + 1}`,
+          href,
+        })) as DetailPanelLink[]),
+        ...((resultSanitario?.official_links?.municipal ?? []).map((href, index) => ({
+          label: `Link municipal ${index + 1}`,
+          href,
+        })) as DetailPanelLink[]),
+      ]),
+      raw: item,
+    });
+  };
+
+  const openSeiPublicoProcessDetails = (item: SeiPublicoResult["results"][number]) => {
+    setDetailPanelItem({
+      kind: "source",
+      title: `SEI Público - ${item.numero_processo}`,
+      subtitle: item.provider_name,
+      status: "consulta pública",
+      description: item.assunto || "Sem assunto textual no retorno público.",
+      sections: [
+        { title: "Metadados", items: [`Órgão: ${item.orgao || "-"}`, `Data: ${item.data || "-"}`, `Result ID: ${item.result_id}`] },
+      ],
+      links: dedupeDetailLinks([
+        {
+          label: "Abrir processo público",
+          href: item.link,
+        },
+      ]),
+      raw: item,
+    });
+  };
+
   const openEvidenceDetails = (item: NonNullable<EnvironmentalComplianceResult["evidence"]>[number]) => {
     setDetailPanelItem({
       kind: "evidence",
@@ -1270,7 +1545,7 @@ export default function Index() {
                 disabled={loading || cleanCNPJ(cnpj).length !== 14}
                 className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-medium rounded-lg transition-colors text-sm whitespace-nowrap"
               >
-                {loading ? "Analisando..." : "Rodar 7 agentes"}
+                {loading ? "Analisando..." : "Rodar 10 agentes"}
               </button>
               <button
                 type="button"
@@ -1331,7 +1606,7 @@ export default function Index() {
         <div className="bg-white border-b border-gray-200">
           <div className="max-w-6xl mx-auto px-6 py-3">
             <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
-              {["CNPJ/CNAE", "RAG CNAE x FTE", "Federal", "Estadual", "Municipal", "Áreas Contam.", "Relatório IA"].map((label, index) => (
+              {AGENT_LOADING_LABELS.map((label, index) => (
                 <div key={label} className="flex items-center gap-1.5">
                   <div
                     className={`w-2 h-2 rounded-full ${
@@ -1386,7 +1661,7 @@ export default function Index() {
                 <p className="text-xs text-gray-400 mt-1">Histórico: {humanizePersistence(fullResult?.persistence?.mode, fullResult?.persistence?.durable)}</p>
               </div>
             </div>
-            {currentAgent >= 8 && fullResult && (
+            {currentAgent >= FINAL_AGENT_STAGE && fullResult && (
               <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-4 text-sm">
                 <div className="flex items-center gap-1.5">
                   <span className="text-gray-500">CNAEs:</span>
@@ -1417,7 +1692,7 @@ export default function Index() {
 
         {activeMode === "executive" && fullResult && loading && (
           <div className="bg-white rounded-lg border border-slate-200 px-5 py-4 text-sm text-slate-700">
-            Consolidando o Resumo Executivo com os 7 agentes. Aguarde o término da análise para os blocos finais.
+            Consolidando o Resumo Executivo com os 10 agentes. Aguarde o término da análise para os blocos finais.
           </div>
         )}
 
@@ -1427,7 +1702,7 @@ export default function Index() {
           </div>
         )}
 
-        {fullResult && activeMode === "executive" && currentAgent >= 8 && !loadingSavedAnalysis && (
+        {fullResult && activeMode === "executive" && currentAgent >= FINAL_AGENT_STAGE && !loadingSavedAnalysis && (
           <>
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
               <div className="xl:col-span-2 bg-white rounded-lg border border-slate-200 shadow-sm p-5 space-y-3">
@@ -1473,6 +1748,8 @@ export default function Index() {
                   <p className="text-slate-700">Estadual: {humanizeCoverageStatus(coverageView.state.status)}</p>
                   <p className="text-slate-700">Municipal: {humanizeCoverageStatus(coverageView.municipal.status)}</p>
                   <p className="text-slate-700">Territorial: {humanizeCoverageStatus(coverageView.ambiental_territorial.status)}</p>
+                  <p className="text-slate-700">Sanitário: {humanizeCoverageStatus(sanitarioCoverageView.status)}</p>
+                  <p className="text-slate-700">SEI Público: {humanizeCoverageStatus(seiCoverageView.status)}</p>
                 </div>
                 {topRisksView.length > 0 && (
                   <div className="pt-2 border-t border-slate-100 space-y-1">
@@ -1611,7 +1888,7 @@ export default function Index() {
                   onClick={() => setMode("auditor")}
                   className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
                 >
-                  Abrir relatório completo (visão 7 agentes)
+                  Abrir relatório completo (visão 10 agentes)
                 </button>
               </div>
             </div>
@@ -1922,11 +2199,136 @@ export default function Index() {
           </AgentCard>
             )}
 
-            {(resultMunicipal || currentAgent === 5) && (
+            {(resultCetesbLicencasPublicas || currentAgent === 5) && (
           <AgentCard
             number={5}
-            title={`Agente 5 - Regras Municipais (${fullResult?.jurisdiction_context?.municipio_nome || "Município"})`}
+            title="Agente 5 - CETESB Licenças Públicas"
             icon="A5"
+            status={
+              resultCetesbLicencasPublicas
+                ? resultCetesbLicencasPublicas.method === "not_applicable"
+                  ? "info"
+                  : resultCetesbLicencasPublicas.licenses.length > 0
+                  ? "warning"
+                  : "success"
+                : currentAgent === 5
+                ? "info"
+                : "idle"
+            }
+          >
+            {currentAgent === 5 && !resultCetesbLicencasPublicas && <Spinner />}
+            {resultCetesbLicencasPublicas && (
+              <div className="mt-3 space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <Badge type={resultCetesbLicencasPublicas.method === "not_applicable" ? "neutral" : "info"}>
+                    {resultCetesbLicencasPublicas.method === "not_applicable"
+                      ? "Não aplicável fora de SP"
+                      : "Consulta automática no portal oficial"}
+                  </Badge>
+                  <Badge type={resultCetesbLicencasPublicas.licenses.length > 0 ? "alto" : "baixo"}>
+                    Licenças/processos: {resultCetesbLicencasPublicas.licenses.length}
+                  </Badge>
+                  <Badge type="neutral">Matches de empresa: {resultCetesbLicencasPublicas.company_matches.length}</Badge>
+                </div>
+
+                {resultCetesbLicencasPublicas.method === "not_applicable" ? (
+                  <div className="bg-sky-50 border border-sky-200 rounded-lg px-4 py-3 text-sm text-sky-900">
+                    Este agente opera apenas para estabelecimentos em SP.
+                  </div>
+                ) : (
+                  <>
+                    {resultCetesbLicencasPublicas.company_matches.length > 0 && (
+                      <div className="space-y-2">
+                        {resultCetesbLicencasPublicas.company_matches.map((companyMatch) => (
+                          <div key={companyMatch.match_id} className="rounded-md border border-gray-200 px-3 py-2 text-xs">
+                            <p className="font-semibold text-gray-800">{companyMatch.razao_social || "Razão social não informada"}</p>
+                            <p className="text-gray-600 mt-1">
+                              CNPJ: {companyMatch.cnpj || "-"} | Município: {companyMatch.municipio || "-"} | Score: {companyMatch.score.toFixed(2)}
+                            </p>
+                            <p className="text-gray-500 mt-1">
+                              Match: {companyMatch.match_level} | Critérios:{" "}
+                              {[
+                                companyMatch.criteria.cnpj_exact ? "CNPJ exato" : null,
+                                companyMatch.criteria.razao_social_match ? "Razão social" : null,
+                                companyMatch.criteria.municipio_match ? "Município" : null,
+                                companyMatch.criteria.logradouro_match ? "Logradouro" : null,
+                              ]
+                                .filter(Boolean)
+                                .join(", ") || "sem critério forte"}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {resultCetesbLicencasPublicas.licenses.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="text-left text-gray-500 uppercase tracking-wide">
+                              <th className="pb-2 pr-3">Processo/SD</th>
+                              <th className="pb-2 pr-3">Objeto</th>
+                              <th className="pb-2 pr-3">Situação</th>
+                              <th className="pb-2 pr-3">Desde</th>
+                              <th className="pb-2 pr-3">Autenticidade</th>
+                              <th className="pb-2">Detalhe</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {resultCetesbLicencasPublicas.licenses.map((item, index) => (
+                              <tr key={`${item.numero_processo || item.sd_numero || "lic"}-${index}`}>
+                                <td className="py-2 pr-3">
+                                  <p>{item.numero_processo || "-"}</p>
+                                  <p className="text-gray-500">SD {item.sd_numero || "-"}</p>
+                                </td>
+                                <td className="py-2 pr-3">{item.objeto_solicitacao || "-"}</td>
+                                <td className="py-2 pr-3">{item.situacao || "-"}</td>
+                                <td className="py-2 pr-3">{item.desde || "-"}</td>
+                                <td className="py-2 pr-3">
+                                  {item.documento_autenticidade_url ? (
+                                    <ExternalLink href={item.documento_autenticidade_url}>Abrir</ExternalLink>
+                                  ) : (
+                                    "-"
+                                  )}
+                                </td>
+                                <td className="py-2">
+                                  <DetailActionButton onClick={() => openCetesbLicencaPublicaDetails(item)} />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-700">
+                        Nenhum processo/licença pública retornado pelo portal CETESB nesta execução.
+                      </div>
+                    )}
+                  </>
+                )}
+
+                <div className="flex flex-wrap gap-3">
+                  <ExternalLink href={resultCetesbLicencasPublicas.official_links.consulta_url}>Abrir consulta pública CETESB</ExternalLink>
+                  <ExternalLink href={resultCetesbLicencasPublicas.official_links.resultado_url}>Abrir endpoint de resultado</ExternalLink>
+                </div>
+
+                {resultCetesbLicencasPublicas.limitations.length > 0 && (
+                  <div className="text-xs text-gray-500 space-y-1">
+                    {resultCetesbLicencasPublicas.limitations.map((item) => (
+                      <p key={item}>- {item}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </AgentCard>
+            )}
+
+            {(resultMunicipal || currentAgent === 6) && (
+          <AgentCard
+            number={6}
+            title={`Agente 6 - Regras Municipais (${fullResult?.jurisdiction_context?.municipio_nome || "Município"})`}
+            icon="A6"
             status={
               resultMunicipal
                 ? resultMunicipal.mode === "api_ready"
@@ -1934,12 +2336,12 @@ export default function Index() {
                     ? "warning"
                     : "success"
                   : "info"
-                : currentAgent === 5
+                : currentAgent === 6
                 ? "info"
                 : "idle"
             }
           >
-            {currentAgent === 5 && !resultMunicipal && <Spinner />}
+            {currentAgent === 6 && !resultMunicipal && <Spinner />}
             {resultMunicipal && (
               <div className="mt-3 space-y-3">
                 <div className="flex flex-wrap gap-2">
@@ -1987,11 +2389,11 @@ export default function Index() {
           </AgentCard>
             )}
 
-            {(resultAreas || currentAgent === 6) && (
+            {(resultAreas || currentAgent === 7) && (
           <AgentCard
-            number={6}
-            title="Agente 6 - Áreas Contaminadas"
-            icon="A6"
+            number={7}
+            title="Agente 7 - Áreas Contaminadas"
+            icon="A7"
             status={
               resultAreas
                 ? resultAreas.status === "match_found"
@@ -1999,12 +2401,12 @@ export default function Index() {
                   : resultAreas.method === "api_match"
                   ? "success"
                   : "info"
-                : currentAgent === 6
+                : currentAgent === 7
                 ? "info"
                 : "idle"
             }
           >
-            {currentAgent === 6 && !resultAreas && <Spinner />}
+            {currentAgent === 7 && !resultAreas && <Spinner />}
             {resultAreas && (
               <div className="mt-3 space-y-3">
                 <div className="bg-sky-50 border border-sky-200 rounded-lg px-4 py-3 text-sm text-sky-900">{resultAreas.summary}</div>
@@ -2130,14 +2532,197 @@ export default function Index() {
           </AgentCard>
             )}
 
-            {(resultAI || currentAgent === 7) && (
+            {(resultSanitario || currentAgent === 8) && (
           <AgentCard
-            number={7}
-            title="Agente 7 - Relatório IA Auditável"
-            icon="A7"
-            status={resultAI ? (resultAI.available ? "success" : "warning") : currentAgent === 7 ? "info" : "idle"}
+            number={8}
+            title="Agente 8 - Módulo Sanitário Nacional"
+            icon="A8"
+            status={
+              resultSanitario
+                ? resultSanitario.findings.length > 0
+                  ? "warning"
+                  : "success"
+                : currentAgent === 8
+                ? "info"
+                : "idle"
+            }
           >
-            {currentAgent === 7 && !resultAI && <Spinner />}
+            {currentAgent === 8 && !resultSanitario && <Spinner />}
+            {resultSanitario && (
+              <div className="mt-3 space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <Badge type={resultSanitario.status === "triggered" ? "alto" : "baixo"}>
+                    {resultSanitario.status === "triggered" ? "Gatilhos sanitários identificados" : "Sem gatilho sanitário no recorte"}
+                  </Badge>
+                  <Badge type="neutral">Findings: {resultSanitario.findings.length}</Badge>
+                  <Badge type="neutral">Obrigações: {resultSanitario.obrigacoes.length}</Badge>
+                </div>
+
+                {resultSanitario.findings.length > 0 && (
+                  <div className="space-y-2 max-h-80 overflow-auto pr-1">
+                    {resultSanitario.findings.map((item) => (
+                      <div key={item.finding_id} className="bg-white rounded-lg border border-gray-200 px-4 py-3 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-semibold text-gray-900">
+                            CNAE {item.cnae_codigo} - {item.cnae_descricao}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <Badge type={riskBadgeType(item.risco)}>{item.risco}</Badge>
+                            <DetailActionButton onClick={() => openSanitarioFindingDetails(item)} />
+                          </div>
+                        </div>
+                        <p className="text-gray-600 mt-1">{item.tema}</p>
+                        {item.obrigacoes.length > 0 && <p className="text-gray-500 mt-1">{item.obrigacoes[0]}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {resultSanitario.obrigacoes.length > 0 && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-xs space-y-1">
+                    <p className="font-semibold text-gray-800">Obrigações sanitárias prioritárias</p>
+                    {resultSanitario.obrigacoes.map((item) => (
+                      <p key={item} className="text-gray-600">
+                        - {item}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                  <div className="rounded-md border border-gray-200 px-3 py-2">
+                    <p className="font-semibold text-gray-800">Federal</p>
+                    <p className="text-gray-600 mt-1">{humanizeCoverageStatus(resultSanitario.federal.status)}</p>
+                  </div>
+                  <div className="rounded-md border border-gray-200 px-3 py-2">
+                    <p className="font-semibold text-gray-800">Estadual</p>
+                    <p className="text-gray-600 mt-1">{humanizeCoverageStatus(resultSanitario.state.status)}</p>
+                  </div>
+                  <div className="rounded-md border border-gray-200 px-3 py-2">
+                    <p className="font-semibold text-gray-800">Municipal</p>
+                    <p className="text-gray-600 mt-1">{humanizeCoverageStatus(resultSanitario.municipal.status)}</p>
+                  </div>
+                </div>
+
+                {(resultSanitario.limitations ?? []).length > 0 && (
+                  <div className="text-xs text-gray-500 space-y-1">
+                    {resultSanitario.limitations.map((item) => (
+                      <p key={item}>- {item}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </AgentCard>
+            )}
+
+            {(resultSeiPublico || currentAgent === 9) && (
+          <AgentCard
+            number={9}
+            title="Agente 9 - SEI Público Assistido"
+            icon="A9"
+            status={
+              resultSeiPublico
+                ? resultSeiPublico.results.length > 0
+                  ? "warning"
+                  : resultSeiPublico.status_reason === "anti_bot_protection"
+                  ? "info"
+                  : "success"
+                : currentAgent === 9
+                ? "info"
+                : "idle"
+            }
+          >
+            {currentAgent === 9 && !resultSeiPublico && <Spinner />}
+            {resultSeiPublico && (
+              <div className="mt-3 space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <Badge type={resultSeiPublico.method === "assistido_auditavel" ? "info" : "neutral"}>
+                    {resultSeiPublico.method === "assistido_auditavel" ? "Fluxo assistido auditável" : "Fluxo manual assistido"}
+                  </Badge>
+                  <Badge type={resultSeiPublico.results.length > 0 ? "alto" : "baixo"}>Processos públicos: {resultSeiPublico.results.length}</Badge>
+                  <Badge type="neutral">Status: {humanizeSourceReason(resultSeiPublico.status_reason)}</Badge>
+                </div>
+
+                {resultSeiPublico.providers.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                    {resultSeiPublico.providers.map((provider) => (
+                      <div key={provider.provider_id} className="rounded-md border border-gray-200 px-3 py-2">
+                        <p className="font-semibold text-gray-800">{provider.name}</p>
+                        <p className="text-gray-600 mt-1">{humanizeSourceStatus(provider.status)}</p>
+                        <p className="text-gray-500 mt-1">{humanizeSourceReason(provider.status_reason)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {resultSeiPublico.results.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-gray-500 uppercase tracking-wide">
+                          <th className="pb-2 pr-3">Processo</th>
+                          <th className="pb-2 pr-3">Órgão</th>
+                          <th className="pb-2 pr-3">Assunto</th>
+                          <th className="pb-2 pr-3">Data</th>
+                          <th className="pb-2 pr-3">Link</th>
+                          <th className="pb-2">Detalhe</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {resultSeiPublico.results.map((item) => (
+                          <tr key={item.result_id}>
+                            <td className="py-2 pr-3">{item.numero_processo}</td>
+                            <td className="py-2 pr-3">{item.orgao || "-"}</td>
+                            <td className="py-2 pr-3">{item.assunto || "-"}</td>
+                            <td className="py-2 pr-3">{item.data || "-"}</td>
+                            <td className="py-2 pr-3">
+                              <ExternalLink href={item.link}>Abrir</ExternalLink>
+                            </td>
+                            <td className="py-2">
+                              <DetailActionButton onClick={() => openSeiPublicoProcessDetails(item)} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-700">
+                    Sem processos públicos SEI retornados nesta execução.
+                  </div>
+                )}
+
+                {resultSeiPublico.links.length > 0 && (
+                  <div className="flex flex-wrap gap-3">
+                    {resultSeiPublico.links.map((link, index) => (
+                      <ExternalLink key={`${link.provider_id}-${index}`} href={link.url}>
+                        {link.label}
+                      </ExternalLink>
+                    ))}
+                  </div>
+                )}
+
+                {resultSeiPublico.limitations.length > 0 && (
+                  <div className="text-xs text-gray-500 space-y-1">
+                    {resultSeiPublico.limitations.map((item) => (
+                      <p key={item}>- {item}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </AgentCard>
+            )}
+
+            {(resultAI || currentAgent === 10) && (
+          <AgentCard
+            number={10}
+            title="Agente 10 - Relatório IA Auditável"
+            icon="A10"
+            status={resultAI ? (resultAI.available ? "success" : "warning") : currentAgent === 10 ? "info" : "idle"}
+          >
+            {currentAgent === 10 && !resultAI && <Spinner />}
             {resultAI && (
               <div className="mt-3 space-y-3">
                 {resultAI.available ? (
@@ -2162,7 +2747,7 @@ export default function Index() {
                   </>
                 ) : (
                   <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
-                    Relatório IA indisponivel: {aiUnavailableReason}
+                    Relatório IA indisponível: {aiUnavailableReason}
                   </div>
                 )}
               </div>
@@ -2173,7 +2758,7 @@ export default function Index() {
             {fullResult && (
           <div className="bg-white rounded-lg border border-gray-200 px-5 py-4 shadow-sm space-y-4">
             <h3 className="font-semibold text-gray-900">Cobertura Nacional</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3 text-xs">
               <div className="border border-gray-200 rounded-md px-3 py-2">
                 <p className="font-semibold text-gray-800">Federal</p>
                 <p className="text-gray-600 mt-1">{humanizeCoverageStatus(coverageView.federal.status)}</p>
@@ -2193,6 +2778,16 @@ export default function Index() {
                 <p className="font-semibold text-gray-800">Territorial</p>
                 <p className="text-gray-600 mt-1">{humanizeCoverageStatus(coverageView.ambiental_territorial.status)}</p>
                 <p className="text-gray-500 mt-1">{humanizeCoverageMode(coverageView.ambiental_territorial.mode)}</p>
+              </div>
+              <div className="border border-gray-200 rounded-md px-3 py-2">
+                <p className="font-semibold text-gray-800">Sanitário</p>
+                <p className="text-gray-600 mt-1">{humanizeCoverageStatus(sanitarioCoverageView.status)}</p>
+                <p className="text-gray-500 mt-1">{humanizeCoverageMode(sanitarioCoverageView.mode)}</p>
+              </div>
+              <div className="border border-gray-200 rounded-md px-3 py-2">
+                <p className="font-semibold text-gray-800">SEI Público</p>
+                <p className="text-gray-600 mt-1">{humanizeCoverageStatus(seiCoverageView.status)}</p>
+                <p className="text-gray-500 mt-1">{humanizeCoverageMode(seiCoverageView.mode)}</p>
               </div>
             </div>
           </div>
@@ -2277,7 +2872,7 @@ export default function Index() {
             </div>
 
             <div>
-              <p className="text-xs font-semibold text-gray-700 mb-2">Timeline dos 7 agentes</p>
+              <p className="text-xs font-semibold text-gray-700 mb-2">Timeline dos 10 agentes</p>
               <div className="space-y-2">
                 {timelineView.map((step) => (
                   <div key={step.agent} className="border border-gray-200 rounded-md px-3 py-2 text-xs">
@@ -2308,7 +2903,7 @@ export default function Index() {
           </div>
         )}
 
-        {currentAgent >= 8 && fullResult && (
+        {currentAgent >= FINAL_AGENT_STAGE && fullResult && (
           <div className="bg-gray-800 text-white rounded-lg px-5 py-4 text-xs space-y-1">
             <p className="font-semibold text-sm mb-2">Disclaimer</p>
             {(fullResult.disclaimers || []).map((item) => (

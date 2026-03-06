@@ -28,7 +28,7 @@ const UFS = [
   "TO",
 ];
 
-export const ENV_SOURCE_CATALOG_VERSION = (process.env.ENV_SOURCE_CATALOG_VERSION ?? "2026.03.05.1").trim();
+export const ENV_SOURCE_CATALOG_VERSION = (process.env.ENV_SOURCE_CATALOG_VERSION ?? "2026.03.06.1").trim();
 
 const FEDERAL_SOURCE_CATALOG = [
   {
@@ -85,6 +85,51 @@ const FEDERAL_SOURCE_CATALOG = [
     rate_limit: "conforme conta OpenAI",
     capacidade_consulta: ["sintese_relatorio"],
   },
+  {
+    source_id: "sanitario_rule_engine",
+    jurisdicao: "federal",
+    tipo_acesso: "dataset",
+    sla: "best_effort",
+    auth: "none",
+    rate_limit: "n/a",
+    capacidade_consulta: ["triagem_sanitaria_cnae", "obrigacoes_sanitarias"],
+  },
+  {
+    source_id: "sanitario_anvisa_portal",
+    jurisdicao: "federal",
+    tipo_acesso: "portal",
+    sla: "best_effort",
+    auth: "none",
+    rate_limit: "public",
+    capacidade_consulta: ["consulta_sanitaria_publica", "snvs_assistido"],
+  },
+  {
+    source_id: "sei_publico_assistido",
+    jurisdicao: "federal",
+    tipo_acesso: "portal",
+    sla: "best_effort",
+    auth: "none",
+    rate_limit: "public",
+    capacidade_consulta: ["consulta_sei_publico_assistida", "links_oficiais_pre_montados"],
+  },
+  {
+    source_id: "sei_anvisa_publico",
+    jurisdicao: "federal",
+    tipo_acesso: "portal",
+    sla: "best_effort",
+    auth: "none",
+    rate_limit: "public",
+    capacidade_consulta: ["consulta_publica_processos_sei"],
+  },
+  {
+    source_id: "sei_ibama_publico",
+    jurisdicao: "federal",
+    tipo_acesso: "portal",
+    sla: "best_effort",
+    auth: "none",
+    rate_limit: "public",
+    capacidade_consulta: ["consulta_publica_processos_sei"],
+  },
 ];
 
 function normalizeUf(uf) {
@@ -96,15 +141,40 @@ export function listFederalSourceCatalog() {
 }
 
 export function listStateSourceCatalog() {
-  return UFS.map((uf) => ({
-    source_id: uf === "SP" ? "sp_cetesb_licenciamento" : `estadual_licenciamento_${uf.toLowerCase()}`,
-    jurisdicao: `estadual:${uf}`,
-    tipo_acesso: uf === "SP" ? "api" : "portal",
-    sla: "best_effort",
-    auth: "none",
-    rate_limit: uf === "SP" ? "public" : "n/a",
-    capacidade_consulta: uf === "SP" ? ["licenciamento_estadual", "enquadramento_sp"] : ["consulta_manual_assistida"],
-  }));
+  return UFS.flatMap((uf) => {
+    const entries = [
+      {
+        source_id: uf === "SP" ? "sp_cetesb_licenciamento" : `estadual_licenciamento_${uf.toLowerCase()}`,
+        jurisdicao: `estadual:${uf}`,
+        tipo_acesso: uf === "SP" ? "api" : "portal",
+        sla: "best_effort",
+        auth: "none",
+        rate_limit: uf === "SP" ? "public" : "n/a",
+        capacidade_consulta: uf === "SP" ? ["licenciamento_estadual", "enquadramento_sp"] : ["consulta_manual_assistida"],
+      },
+      {
+        source_id: "sanitario_vigilancia_estadual",
+        jurisdicao: `estadual:${uf}`,
+        tipo_acesso: "portal",
+        sla: "best_effort",
+        auth: "none",
+        rate_limit: "n/a",
+        capacidade_consulta: ["vigilancia_sanitaria_estadual_assistida"],
+      },
+    ];
+    if (uf === "SP") {
+      entries.push({
+        source_id: "sp_cetesb_licencas_publicas_portal",
+        jurisdicao: "estadual:SP",
+        tipo_acesso: "portal",
+        sla: "best_effort",
+        auth: "none",
+        rate_limit: "public",
+        capacidade_consulta: ["consulta_licencas_publicas", "processos_cetesb_publicos"],
+      });
+    }
+    return entries;
+  });
 }
 
 export function listMunicipalSourceCatalog() {
@@ -126,6 +196,15 @@ export function listMunicipalSourceCatalog() {
       auth: "none",
       rate_limit: "public",
       capacidade_consulta: ["tipologia_consema_2024", "competencia_municipal_sp"],
+    },
+    {
+      source_id: "sanitario_vigilancia_municipal",
+      jurisdicao: "municipal:*",
+      tipo_acesso: "portal",
+      sla: "best_effort",
+      auth: "none",
+      rate_limit: "n/a",
+      capacidade_consulta: ["vigilancia_sanitaria_municipal_assistida"],
     },
   ];
 }
@@ -159,6 +238,12 @@ export function getEnvironmentalSourceCatalog({ uf } = {}) {
   const states = listStateSourceCatalog();
   const municipals = listMunicipalSourceCatalog();
   const areas = listAreaSourceCatalog();
+  const sanitarios = [
+    ...federal.filter((entry) => String(entry.source_id).startsWith("sanitario_")),
+    ...states.filter((entry) => String(entry.source_id).startsWith("sanitario_")),
+    ...municipals.filter((entry) => String(entry.source_id).startsWith("sanitario_")),
+  ];
+  const seiPublico = federal.filter((entry) => String(entry.source_id).startsWith("sei_"));
 
   return {
     version: ENV_SOURCE_CATALOG_VERSION,
@@ -174,6 +259,13 @@ export function getEnvironmentalSourceCatalog({ uf } = {}) {
       if (entry.jurisdicao === "ambiental_territorial:*") return true;
       return entry.jurisdicao === `ambiental_territorial:${normalizedUf}`;
     }),
+    sanitario: sanitarios.filter((entry) => {
+      if (!normalizedUf) return true;
+      if (entry.jurisdicao === "federal") return true;
+      if (entry.jurisdicao.endsWith(":*")) return true;
+      return entry.jurisdicao.endsWith(`:${normalizedUf}`);
+    }),
+    sei_publico: seiPublico,
   };
 }
 
@@ -182,6 +274,7 @@ export function buildCoverageMatrix({ uf, municipioIbge, municipioNome }) {
   const stateMode = normalizedUf === "SP" ? "api_ready" : "manual_required";
   const municipalMode = normalizedUf === "SP" ? "api_ready" : "manual_required";
   const areasMode = normalizedUf === "SP" ? "api_ready" : "manual_required";
+  const sanitarioStateMode = normalizedUf ? "portal" : "manual_required";
 
   return {
     scope_mode: "national",
@@ -214,6 +307,17 @@ export function buildCoverageMatrix({ uf, municipioIbge, municipioNome }) {
       status: areasMode,
       mode: areasMode === "api_ready" ? "api" : "manual",
       sources: areasMode === "api_ready" ? ["sp_semil_areas_contaminadas_api"] : ["areas_contaminadas_manual_nacional"],
+    },
+    sanitario: {
+      status: "portal",
+      mode: "assistido",
+      sources: ["sanitario_rule_engine", "sanitario_anvisa_portal", "sanitario_vigilancia_estadual", "sanitario_vigilancia_municipal"],
+      state_mode: sanitarioStateMode,
+    },
+    sei_publico: {
+      status: "portal",
+      mode: "assistido",
+      sources: ["sei_publico_assistido", "sei_anvisa_publico", "sei_ibama_publico"],
     },
   };
 }

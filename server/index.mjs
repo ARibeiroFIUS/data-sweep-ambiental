@@ -1351,10 +1351,18 @@ const ENV_SOURCE_HEALTH_IDS = [
   "openai_relatorio_ambiental",
   "ibama_rule_engine",
   "sp_cetesb_licenciamento",
+  "sp_cetesb_licencas_publicas_portal",
   "sp_consema_municipal",
   "municipal_licenciamento_generico",
   "sp_semil_areas_contaminadas_api",
   "areas_contaminadas_manual_nacional",
+  "sanitario_rule_engine",
+  "sanitario_anvisa_portal",
+  "sanitario_vigilancia_estadual",
+  "sanitario_vigilancia_municipal",
+  "sei_publico_assistido",
+  "sei_anvisa_publico",
+  "sei_ibama_publico",
 ];
 
 const ENV_SOURCE_PROBE_CONFIG = {
@@ -1373,6 +1381,18 @@ const ENV_SOURCE_PROBE_CONFIG = {
   },
   sp_semil_areas_contaminadas_api: {
     url: "https://mapas.semil.sp.gov.br/server/rest/services/SIGAM/Empreendimento_Contaminacao_SGP/MapServer/1/query?where=1%3D0&outFields=OBJECTID&f=json",
+  },
+  sp_cetesb_licencas_publicas_portal: {
+    url: "https://licenciamento.cetesb.sp.gov.br/cetesb/processo_consulta.asp",
+  },
+  sanitario_anvisa_portal: {
+    url: "https://consultas.anvisa.gov.br/",
+  },
+  sei_anvisa_publico: {
+    url: "https://sei.anvisa.gov.br/",
+  },
+  sei_ibama_publico: {
+    url: "https://sei.ibama.gov.br/",
   },
 };
 
@@ -1425,7 +1445,13 @@ async function probeEnvironmentalSourceHealth(sourceId) {
       };
     }
 
-    if (sourceId === "municipal_licenciamento_generico" || sourceId === "areas_contaminadas_manual_nacional") {
+    if (
+      sourceId === "municipal_licenciamento_generico" ||
+      sourceId === "areas_contaminadas_manual_nacional" ||
+      sourceId === "sanitario_vigilancia_estadual" ||
+      sourceId === "sanitario_vigilancia_municipal" ||
+      sourceId === "sei_publico_assistido"
+    ) {
       return {
         ...defaultResult,
         status: "manual_required",
